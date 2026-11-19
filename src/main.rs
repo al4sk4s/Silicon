@@ -5,6 +5,9 @@ mod auth;
 mod config;
 mod dispatch;
 mod lock;
+mod panel;
 mod roles;
+mod state;
+mod wa;
 
 fn main() {}

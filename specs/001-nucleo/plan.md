@@ -6,10 +6,9 @@ conferida no código da lib.
 
 ## Decisões do dono (2026-11-19)
 - HTTPS autoassinado na LAN: **aprovado**. Papéis por **JID** (nome só rótulo): **aprovado**.
-- Dono = a conta pareada (`is_from_me`): **aprovado**. Somado: `/permitir` e `/bloquear`
-  (só dono) dão/tiram o papel `comando` ao chat atual (grupo ou pessoa), além do painel
-  (spec RF13). Entra em `dispatch.rs` como comando de admin; `decide()` já devolve
-  `Command { admin }`.
+- Dono = a conta pareada (`is_from_me`): **aprovado**. RF13 (19/11/2026): papéis **só pelo
+  painel**; `/permitir` e `/bloquear` por mensagem **não** serão implementados, `decide()`
+  não muda (chat sem papel = Drop, sempre).
 
 ## Decisões a confirmar (histórico)
 1. **HTTPS autoassinado só quando o bind não for loopback.** Em `127.0.0.1` fica HTTP. Na
@@ -65,6 +64,8 @@ axum-server (P9). Lock de instância: `std::fs::File::try_lock` (sem crate).
   testável**; `enum Action { Drop, Command { admin: bool }, Monitor }`. Handler async: chama
   `decide`, parse, `sleep(rand(delay_min..=delay_max))`, `reply`. Ganchos vazios para 002 e 003.
 - `auth.rs`: argon2id, sessões, rate limit (T6). `panel.rs`: rotas axum, login (T7).
+- `state.rs`: `AppState` compartilhado painel↔bot (store, papéis, sessões, status, eventos, grupos,
+  JIDs recentes). Só metadados.
 - `wa.rs`: monta o Bot, handlers de QR/pair/connected/logged_out; grava status/eventos no
   `AppState`.
 
@@ -96,6 +97,8 @@ Eventos recentes só em memória (`VecDeque` de 200). Sem papéis = bot mudo (RF
 - Rate limit: `HashMap<IpAddr,(falhas, bloqueado_até)>`; 5 falhas → IP bloqueado 5 min.
 - Sem `password_hash` → força `127.0.0.1` e avisa no log (P5). POSTs conferem `Origin`/`Host`.
 - Nunca mostra conteúdo de mensagem nem dados da sessão.
+- T9: servir com `into_make_service_with_connect_info::<SocketAddr>()` (o login usa o IP).
+- RF13: papéis só por aqui. `owner_jid` vazio = sem dono.
 
 ## Sessão, logout, systemd
 `LoggedOut` → loga e sai com **código 2** (precisa QR novo). Unit `silicon.service`:
@@ -150,5 +153,5 @@ diferentes); só a integração roda cargo. Serial (um por vez, `cargo -j1`): a 
 tipos/lifetimes da lib → revisão mais cuidadosa.
 
 ## Não verificado
-Montagem de `PairCodeOptions`; estabilidade de `Jid::to_string()` para LID; se o ID
-retornado por `ctx.reply` serve ao set anti-loop.
+`PairCodeOptions` (`whatsapp_rust::pair_code`) compila; `SendResult.message_id` existe, mas
+ainda não se sabe se casa com o `info.id` do eco (T11). Estabilidade de `Jid::to_string()` para LID.

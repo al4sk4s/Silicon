@@ -34,14 +34,14 @@ tabelas `roles`/`settings`, índice único do `alerta`, defaults (atraso 1–2 s
 **Build 1** (integração): fmt + clippy + test `-j1` após T3–T6.
 
 ## Onda C — painel e WhatsApp
-**T7. Rotas/HTML do painel** · módulo — login/logout, status, `/chats` (grupos + JID manual +
+**T7. [x] Rotas/HTML do painel** · módulo — login/logout, status, `/chats` (grupos + JID manual +
 recentes), papéis por **JID** com nome só de rótulo (RF12), `/settings`, checagem de
 `Origin`/`Host`, bind forçado a loopback sem senha, cookie `HttpOnly; SameSite=Strict`.
 Testes `oneshot` (sem cookie → 303; login ok → cookie). Depende: T5, T6.
 
-**T8. `wa.rs` + handler** · integração — Bot builder, QR no terminal, pair code, `on_message`
+**T8. [x] código (falta [WA] no T11) `wa.rs` + handler** · integração — Bot builder, QR no terminal, pair code, `on_message`
 ligado a `decide`, atraso aleatório (P8), **set anti-loop** de IDs enviados, `on_logged_out` →
-exit 2, comandos `/permitir` e `/bloquear` do dono (RF13), grava eventos sem conteúdo.
+exit 2, grava eventos sem conteúdo.
 **[WA]** parear, reconectar sem QR, `list_participating`. Depende: T4, T5.
 
 **Build 2** (integração) após T7–T8.
@@ -54,9 +54,16 @@ no `.db` da sessão. Depende: T3, T7, T8.
 **T10. Deploy** · módulo (paralelo, sem build) — `deploy/silicon.service` (restart limitado,
 `RestartPreventExitStatus=2`, `StateDirectoryMode=0700`) + seção no README. Depende: —
 
-**Build 3** + **T11 [WA]** validação real (integração): QR, reinício sem QR, `/permitir`,
+**Build 3** + **T11 [WA]** validação real (integração): QR, reinício sem QR,
 loop de auto-resposta ausente, LID vs PN, logout pelo celular → exit 2, painel na LAN com
 HTTPS e bloqueio por senha.
 
 ## Paralelismo
 Livres (sem build): T2, T10; T3–T6 juntos. Serial (integração, `-j1`): Builds 1–3.
+
+## Notas da Onda C (19/11/2026)
+- T8 sem comandos: `wa::command_reply` é o gancho vazio (002 pluga ali). T9 deve servir o painel
+  com `into_make_service_with_connect_info::<SocketAddr>()` (o login usa o IP) e chamar
+  `wa::run(state, session_db, pair_phone)`; `owner_jid` vazio = sem dono.
+- Não verificado (T11 [WA]): `ctx.reply` → `SendResult.message_id` casa com `info.id` do eco;
+  `Jid::to_string()` estável para LID; `list_participating`; ordem pair code vs Connected.

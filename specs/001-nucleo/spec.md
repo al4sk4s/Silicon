@@ -30,8 +30,9 @@ no PC servidor; a config é feita de outro lugar (notebook) pelo painel.
 - RF12 Papéis são ligados ao **JID** do chat (nunca ao nome): renomear o grupo não quebra.
   O nome só aparece como rótulo, atualizado a partir da lib.
 - RF13 Habilitar quem pode usar comandos: o dono dá o papel `comando` a um **grupo** ou a
-  uma **pessoa** (chat 1:1), pelo painel **ou** por mensagem do dono no próprio chat
-  (`/permitir`, `/bloquear`). Só o dono executa esses dois comandos (P3).
+  uma **pessoa** (chat 1:1) **somente pelo painel** (decisão do dono, 19/11/2026). Chat sem
+  papel é descartado antes do parse (P2), inclusive mensagem do dono: `/permitir` e
+  `/bloquear` por mensagem **não existem** nesta spec (pode virar emenda futura da P2).
 
 ## Não funcionais
 - Painel acessível **só na LAN**, com **senha** (P5): bind configurável (padrão

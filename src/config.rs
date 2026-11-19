@@ -125,7 +125,8 @@ impl Store {
     }
 
     pub fn owner_jid(&self) -> Result<Option<String>> {
-        self.get("owner_jid")
+        // O painel grava "" para limpar o dono; vazio = sem dono.
+        Ok(self.get("owner_jid")?.filter(|s| !s.is_empty()))
     }
 
     pub fn password_hash(&self) -> Result<Option<String>> {
@@ -173,6 +174,9 @@ mod tests {
         assert_eq!(s.get("delay_min_ms").unwrap().as_deref(), Some("700"));
         assert_eq!(s.delay_min_ms().unwrap(), 700);
         assert_eq!(s.owner_jid().unwrap().as_deref(), Some("x@s.whatsapp.net"));
+        // Dono vazio (limpo pelo painel) = sem dono.
+        s.set("owner_jid", "").unwrap();
+        assert_eq!(s.owner_jid().unwrap(), None);
     }
 
     #[test]
