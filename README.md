@@ -85,6 +85,39 @@ No WhatsApp, no chat que você liberou:
 /bloquear     (só você: tira a permissão)
 ```
 
+## 🖥️ Deploy (systemd)
+
+Passo a passo para rodar 24/7 no servidor (unit em [`deploy/silicon.service`](deploy/silicon.service)):
+
+```bash
+# 1. usuário e pasta de dados
+sudo useradd --system --home /var/lib/silicon --shell /usr/bin/nologin silicon
+sudo install -d -o silicon -g silicon -m 0700 /var/lib/silicon
+
+# 2. binário e unit
+sudo install -m 0755 target/release/silicon /usr/local/bin/silicon
+sudo install -m 0644 deploy/silicon.service /etc/systemd/system/silicon.service
+sudo systemctl daemon-reload
+
+# 3. senha do painel e pareamento: no terminal, FORA do systemd
+sudo -u silicon env SILICON_DATA_DIR=/var/lib/silicon silicon set-password
+sudo -u silicon env SILICON_DATA_DIR=/var/lib/silicon silicon
+
+# 4. depois de parear, Ctrl+C e ligue o serviço
+sudo systemctl enable --now silicon
+```
+
+- **Pareie no terminal, não pelo systemd:** sob o systemd o QR (e o pair code) iriam para o
+  journald. Rode sempre como usuário `silicon` e com o **mesmo** `SILICON_DATA_DIR`; como outro
+  usuário, os arquivos criados não seriam abertos pelo daemon. Para usar pair code em vez do QR,
+  defina `SILICON_PAIR_PHONE=<só dígitos, com DDI>` no mesmo comando.
+- **Reinicie depois de `set-password`** (`sudo systemctl restart silicon`): o bind é decidido na
+  partida. Sem senha, o painel fica só em `127.0.0.1`.
+- **Painel na LAN usa HTTPS autoassinado:** o navegador vai avisar. Confira o fingerprint
+  SHA-256 impresso no terminal/journal antes de aceitar.
+- **Saiu com código 2?** O celular encerrou a sessão. O systemd não reinicia nesse caso: refaça
+  o passo 3 e depois `sudo systemctl start silicon`.
+
 ## ⚠️ Avisos importantes
 
 - **Não é um produto oficial.** O Silicon usa um cliente não oficial do WhatsApp. Isso pode

@@ -47,11 +47,11 @@ exit 2, grava eventos sem conteúdo.
 **Build 2** (integração) após T7–T8.
 
 ## Onda D — fechamento
-**T9. `main.rs` final** · módulo — `silicon` e `silicon set-password` (stdin sem eco), HTTPS
+**T9. [x] `main.rs` final** · módulo — `silicon` e `silicon set-password` (stdin sem eco), HTTPS
 autoassinado (`rcgen` + `axum-server`, fingerprint no terminal) quando bind ≠ loopback, `0600`
 no `.db` da sessão. Depende: T3, T7, T8.
 
-**T10. Deploy** · módulo (paralelo, sem build) — `deploy/silicon.service` (restart limitado,
+**T10. [x] Deploy** · módulo (paralelo, sem build) — `deploy/silicon.service` (restart limitado,
 `RestartPreventExitStatus=2`, `StateDirectoryMode=0700`) + seção no README. Depende: —
 
 **Build 3** + **T11 [WA]** validação real (integração): QR, reinício sem QR,
@@ -67,3 +67,10 @@ Livres (sem build): T2, T10; T3–T6 juntos. Serial (integração, `-j1`): Build
   `wa::run(state, session_db, pair_phone)`; `owner_jid` vazio = sem dono.
 - Não verificado (T11 [WA]): `ctx.reply` → `SendResult.message_id` casa com `info.id` do eco;
   `Jid::to_string()` estável para LID; `list_participating`; ordem pair code vs Connected.
+
+## Notas da Onda D (19/11/2026)
+- T9: HTTPS via `rcgen` (ring) + `axum-server` (`tls-rustls-no-provider`) + `rustls` ring; sem `aws-lc`.
+  Licenças conferidas (301 crates no `cargo metadata`; só `r-efi` tem LGPL, mas em `OR` com MIT/Apache).
+  Cert/chave em `<data_dir>/panel-{cert,key}.pem` (chave 0600); fingerprint SHA-256 no log a cada partida.
+  `set-password` usa `stty -echo` (shortcut, só Unix). Argumento inválido sai com 64; erro com 1; 2 só logout.
+- Build 3: fmt, clippy `-D warnings` e 22 testes ok. Falta só T11 [WA].

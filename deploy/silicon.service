@@ -1,0 +1,27 @@
+[Unit]
+Description=Silicon (bot de WhatsApp)
+After=network-online.target
+Wants=network-online.target
+# No máximo 5 partidas em 10 minutos; depois disso o systemd desiste.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+User=silicon
+Environment=SILICON_DATA_DIR=/var/lib/silicon
+# Cria /var/lib/silicon gravável só pelo usuário silicon (sessão = credencial).
+StateDirectory=silicon
+StateDirectoryMode=0700
+ExecStart=/usr/local/bin/silicon
+Restart=on-failure
+RestartSec=30
+# Exit 2 = o celular encerrou a sessão do WhatsApp (logout). Precisa de QR novo,
+# então reiniciar não adianta: o serviço fica parado até você parear de novo.
+RestartPreventExitStatus=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -31,6 +31,7 @@ impl Store {
     }
 
     /// Banco em memória, para testes.
+    #[cfg(test)]
     pub fn memory() -> Result<Store> {
         Self::migrate(Connection::open_in_memory()?)
     }
