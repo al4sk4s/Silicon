@@ -1,12 +1,10 @@
 # Constituição do Silicon
 
-> Versão 0.2.0 (RASCUNHO) · 2026-11-19 · Autor: Al4sk4s
-> 0.2.0: P1 ganha exceção (alerta ao dono); P2 ganha papéis; P5 libera LAN com senha.
-> Rascunho tirado da conversa de origem (`docs/contexto.md`). **Ainda não ratificada**:
-> será ratificada ao fechar a fase de planejamento. Uma spec, plano ou código que
-> contrarie a constituição está errado — quem muda é a spec/plano/código, não a regra.
-> Mudar regra: discutir com o dono e subir a versão (MAJOR = remove/inverte ·
-> MINOR = adiciona · PATCH = só texto).
+> Versão 1.0.0 · Ratificada em 2026-11-19 · Autor: Al4sk4s
+> 1.0.0: ratificada. (0.2.0: P1 ganha exceção do alerta ao dono; P2 ganha papéis; P5 libera LAN com senha.)
+> Uma spec, plano ou código que contrarie a constituição está errado — quem muda é a
+> spec/plano/código, não a regra. Mudar regra: discutir com o dono e subir a versão
+> (MAJOR = remove/inverte · MINOR = adiciona · PATCH = só texto).
 
 ## O que é o Silicon
 Bot de WhatsApp em Rust, de terminal, de uso pessoal, para um grupo pequeno de conhecidos.

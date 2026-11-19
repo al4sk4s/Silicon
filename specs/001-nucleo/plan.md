@@ -64,7 +64,7 @@ axum-server (P9). Lock de instância: `std::fs::File::try_lock` (sem crate).
 - `dispatch.rs`: `fn decide(roles, chat, sender, from_me, owner) -> Action` **pura e
   testável**; `enum Action { Drop, Command { admin: bool }, Monitor }`. Handler async: chama
   `decide`, parse, `sleep(rand(delay_min..=delay_max))`, `reply`. Ganchos vazios para 002 e 003.
-- `panel.rs`: rotas axum, login, sessões, rate limit.
+- `auth.rs`: argon2id, sessões, rate limit (T6). `panel.rs`: rotas axum, login (T7).
 - `wa.rs`: monta o Bot, handlers de QR/pair/connected/logged_out; grava status/eventos no
   `AppState`.
 
@@ -138,7 +138,7 @@ reconexão após queda de rede, logout pelo celular → exit 2.
 | 3 | `lock.rs` + teste | src/lock.rs | módulo | 1 |
 | 4 | `roles.rs` + `dispatch::decide` + testes | src/roles.rs, src/dispatch.rs | módulo | 1 |
 | 5 | `config.rs` (esquema, Store, 0600) + testes | src/config.rs | módulo | 1 |
-| 6 | Auth: hash, sessões, rate limit + testes | src/panel.rs (auth) | módulo | 1 |
+| 6 | Auth: hash, sessões, rate limit + testes | src/auth.rs | módulo | 1 |
 | 7 | Rotas/HTML do painel + testes oneshot | src/panel.rs | módulo | 5, 6 |
 | 8 | `wa.rs`: builder, QR/pair, handler com `decide`, atraso, set anti-loop | src/wa.rs, src/dispatch.rs | integração | 4, 5 |
 | 9 | `main.rs` final + `set-password` + TLS opcional | src/main.rs | módulo | 3, 7, 8 |

@@ -4,31 +4,31 @@ Legenda: **[WA]** só se valida com WhatsApp real · **módulo** = tarefa isolad
 · **integração** = junta as peças. Build/test/clippy: um por vez, `-j1`.
 
 ## Onda A — base (serial)
-**T1. Esqueleto do crate** · módulo
+**T1. [x] Esqueleto do crate** · módulo
 - Entrega: `Cargo.toml` (crate único; `whatsapp-rust` por git `rev` completo `eeb24da…`; tokio,
   axum 0.8.9, rusqlite 0.43 sem `bundled`, argon2, rand, tracing, tracing-subscriber, serde,
   qrcode, `tower` como dev-dep), `src/main.rs` mínimo, `rust-toolchain`/MSRV 1.95.
 - Pronto quando: `cargo check -j1` passa (rodado pela integração). Sem feature `voip*`.
 - Depende de: —
 
-**T2. Conferir licenças** · pesquisa (paralelo com tudo)
+**T2. [x] Conferir licenças** · pesquisa (paralelo com tudo)
 - Entrega: lista licença por dependência (argon2, qrcode, rcgen, axum-server, tower, rand...).
 - Pronto: nenhuma GPL/AGPL/LGPL (P9); `cargo deny`/`cargo tree` ok se disponível.
 - Depende de: —
 
 ## Onda B — módulos puros (paralelo, arquivos diferentes; sem build entre eles)
-**T3. `lock.rs`** · módulo — lock de instância por `File::try_lock`; segundo lock falha
+**T3. [x] `lock.rs`** · módulo — lock de instância por `File::try_lock`; segundo lock falha
 (teste). Depende: T1.
 
-**T4. `roles.rs` + `dispatch::decide`** · módulo — `Role`, `ChatRoles`, `decide()` pura:
+**T4. [x] `roles.rs` + `dispatch::decide`** · módulo — `Role`, `ChatRoles`, `decide()` pura:
 sem papel→Drop, monitorado nunca responde, alerta→Drop, `comando` não dá admin, admin só
 `from_me`/dono/`sender_alt`. Testes. Depende: T1.
 
-**T5. `config.rs`** · módulo — `Store` SQLite (`silicon.db`, `0600`), migração `user_version`,
+**T5. [x] `config.rs`** · módulo — `Store` SQLite (`silicon.db`, `0600`), migração `user_version`,
 tabelas `roles`/`settings`, índice único do `alerta`, defaults (atraso 1–2 s, bind
 `127.0.0.1:8080`). Testes em `:memory:`. Depende: T1.
 
-**T6. Auth do painel** · módulo — argon2id hash/verify, sessões (token 32 B, 12 h), rate limit
+**T6. [x] Auth do painel** · módulo — argon2id hash/verify, sessões (token 32 B, 12 h), rate limit
 (5 falhas → 5 min por IP). Testes. Depende: T1.
 
 **Build 1** (integração): fmt + clippy + test `-j1` após T3–T6.
