@@ -1,0 +1,56 @@
+# ─── Rust ───────────────────────────────────────────────
+/target/
+**/target/
+*.pdb
+**/*.rs.bk
+
+# ─── Segredos e sessão do WhatsApp — NUNCA commitar (constituição P4) ───
+# A sessão do WhatsApp é uma credencial: quem tem o arquivo, tem a conta.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+secrets/
+session/
+sessions/
+whatsapp.db*
+silicon.db*
+silicon.lock
+*.db
+*.db-*
+*.db3
+*.sqlite
+*.sqlite-*
+config.local.*
+*.local.toml
+*.local.json
+
+# Certificado autoassinado do painel e hash de senha
+tls/
+certs/
+*.password
+password_hash*
+
+# ─── Dados em tempo de execução ─────────────────────────
+data/
+logs/
+*.log
+tmp/
+*.webp
+*.mp4
+*.gif
+*.mov
+*.webm
+
+# ─── Sistema / editor ───────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
