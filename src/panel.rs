@@ -71,7 +71,8 @@ fn cookie_token(h: &HeaderMap) -> Option<String> {
         .map(|(_, v)| v.to_string())
 }
 
-fn same_origin(h: &HeaderMap, uri: &axum::http::Uri) -> bool {
+/// `trusted`: host público do proxy reverso (env `SILICON_PROXY_HOST`), aceito além do Host.
+fn same_origin(h: &HeaderMap, uri: &axum::http::Uri, trusted: Option<&str>) -> bool {
     // HTTP/2 não manda `Host`: o host vem em `:authority`, que aparece na URI.
     let host = h
         .get(header::HOST)
@@ -81,7 +82,7 @@ fn same_origin(h: &HeaderMap, uri: &axum::http::Uri) -> bool {
         Some(o) => {
             let o = o.to_str().unwrap_or("");
             let o_host = o.split_once("://").map_or(o, |(_, r)| r);
-            host == Some(o_host)
+            host == Some(o_host) || trusted.is_some_and(|t| t == o_host)
         }
         None => h.get("sec-fetch-site").is_none_or(|v| v != "cross-site"),
     }
@@ -89,7 +90,12 @@ fn same_origin(h: &HeaderMap, uri: &axum::http::Uri) -> bool {
 
 /// CSRF em todo POST, depois auth em tudo menos /login, e cabeçalhos de resposta.
 async fn guard(State(st): S, req: Request, next: Next) -> Response {
-    let mut resp = if req.method() == Method::POST && !same_origin(req.headers(), req.uri()) {
+    let mut resp = if req.method() == Method::POST
+        && !same_origin(
+            req.headers(),
+            req.uri(),
+            std::env::var("SILICON_PROXY_HOST").ok().as_deref(),
+        ) {
         (StatusCode::FORBIDDEN, "origem não permitida").into_response()
     } else if req.uri().path() != "/login"
         && !cookie_token(req.headers()).is_some_and(|t| st.sessions.valid(&t))
@@ -208,12 +214,9 @@ async fn index(State(st): S) -> Html<String> {
         .rev()
         .take(50)
     {
-        let t = e.at % 86400;
         rows += &format!(
-            "<tr><td>{:02}:{:02}:{:02} UTC</td><td>{}</td><td>{}</td></tr>",
-            t / 3600,
-            t % 3600 / 60,
-            t % 60,
+            "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
+            crate::state::local_hms(e.at),
             esc(&e.kind),
             esc(&e.jid)
         );
@@ -460,6 +463,17 @@ mod tests {
             .await
             .unwrap();
         assert_ne!(r.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn proxy_host_is_opt_in() {
+        let mut h = HeaderMap::new();
+        h.insert(header::HOST, "127.0.0.1:8080".parse().unwrap());
+        h.insert(header::ORIGIN, "https://bot.casa".parse().unwrap());
+        let uri = axum::http::Uri::from_static("/login");
+        assert!(!same_origin(&h, &uri, None));
+        assert!(!same_origin(&h, &uri, Some("outro.casa")));
+        assert!(same_origin(&h, &uri, Some("bot.casa")));
     }
 
     #[tokio::test]

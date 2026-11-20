@@ -120,3 +120,8 @@ Livres (sem build): T2, T10; T3–T6 juntos. Serial (integração, `-j1`): Build
 - [x] 5 Eco: ainda **não exercitado** (stdout não registra mensagens; descartar o eco é silencioso). Pendência **aceita pelo dono**; `Sent` tem teste unitário. Rever se a spec 002 mostrar resposta duplicada.
   Fechado em 20/11/2026 (dono aprovou): validação da 002 no WhatsApp real (Android/iOS) saiu sem duplicata nem laço; o eco nunca chegou como evento.
 - Nome do aparelho no WhatsApp: `with_device_props(...with_os("Silicon™"))` em `wa.rs`; vale só num **novo** pareamento (a sessão de teste atual ainda mostra o nome antigo).
+
+## Manutenção 20/11/2026
+- Painel e log mostram **horário local** (`state::local_hms`, via `libc::localtime_r`); antes era UTC.
+- Painel atrás de proxy reverso: env **`SILICON_PROXY_HOST=<host público>`** (opcional, padrão desligado) é aceito
+  como `Origin` além do `Host`/`:authority`. O proxy deve repassar `Host` ou o POST dá 403. Painel continua só LAN (P5).

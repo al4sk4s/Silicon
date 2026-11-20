@@ -22,6 +22,13 @@ pub struct Limiter(Mutex<HashMap<String, (VecDeque<Instant>, bool)>>);
 impl Limiter {
     pub fn check(&self, chat: &str, now: Instant, max_per_min: usize) -> Verdict {
         let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        // Descarta chats inativos (janela vencida e sem aviso pendente) para o mapa não crescer.
+        map.retain(|k, (q, warned)| {
+            k == chat
+                || *warned
+                || q.back()
+                    .is_some_and(|t| now.saturating_duration_since(*t) < WINDOW)
+        });
         let (queue, warned) = map.entry(chat.to_string()).or_default();
         queue.retain(|t| now.saturating_duration_since(*t) < WINDOW);
         let verdict = if queue.len() < max_per_min {
@@ -59,6 +66,16 @@ mod tests {
         // estado "já avisei" resetou
         assert_eq!(l.check("a", later, 2), Verdict::Allow);
         assert_eq!(l.check("a", later, 2), Verdict::DenyFirst);
+    }
+
+    #[test]
+    fn idle_chats_are_dropped() {
+        let l = Limiter::default();
+        let t = Instant::now();
+        l.check("a", t, 2);
+        l.check("b", t + Duration::from_secs(60), 2);
+        let map = l.0.lock().unwrap();
+        assert!(!map.contains_key("a") && map.contains_key("b"));
     }
 
     #[test]

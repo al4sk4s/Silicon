@@ -40,6 +40,27 @@ pub struct AppState {
     pub https: bool,
 }
 
+/// Horário local "HH:MM:SS" de um instante unix (usa o fuso do sistema).
+pub fn local_hms(secs: u64) -> String {
+    let t = secs as libc::time_t;
+    // SAFETY: `tm` é zerado e só preenchido por localtime_r (thread-safe) a partir de `t`.
+    let tm = unsafe {
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&t, &mut tm);
+        tm
+    };
+    format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
+}
+
+/// Relógio local nos logs do `tracing` (o feature `local-time` exigiria o crate `time`).
+pub struct LocalClock;
+
+impl tracing_subscriber::fmt::time::FormatTime for LocalClock {
+    fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
+        write!(w, "{}", local_hms(now()))
+    }
+}
+
 fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -92,5 +113,16 @@ impl AppState {
         let fresh = self.store.roles()?;
         *self.roles.write().unwrap_or_else(|e| e.into_inner()) = fresh;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_hms_format() {
+        let h = local_hms(1_700_000_000);
+        assert_eq!((h.len(), &h[2..3], &h[5..6]), (8, ":", ":"));
     }
 }

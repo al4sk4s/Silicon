@@ -114,6 +114,7 @@ sudo systemctl enable --now silicon
   journald. Rode sempre como usuário `silicon` e com o **mesmo** `SILICON_DATA_DIR`; como outro
   usuário, os arquivos criados não seriam abertos pelo daemon. Para usar pair code em vez do QR,
   defina `SILICON_PAIR_PHONE=<só dígitos, com DDI>` no mesmo comando.
+- **Atrás de proxy reverso?** Defina `SILICON_PROXY_HOST=<host público>` no serviço; sem isso o POST do login dá 403 (checagem de `Origin`).
 - **Reinicie depois de `set-password`** (`sudo systemctl restart silicon`): o bind é decidido na
   partida. Sem senha, o painel fica só em `127.0.0.1`.
 - **Papel de DM por "JID manual" no painel usa a forma `…@lid`** (ex.: `123456789@lid`), não o número.

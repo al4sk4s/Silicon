@@ -189,6 +189,7 @@ async fn main() -> ExitCode {
     // INFO no máximo: debug/trace da lib poderia expor conteúdo (P4).
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
+        .with_timer(state::LocalClock)
         .init();
     let res = match data_dir() {
         Ok(dir) => match cmd {

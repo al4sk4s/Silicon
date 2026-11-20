@@ -313,6 +313,24 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
     send_webp(ctx, st, sent, &chat, webp).await;
 }
 
+const MAX_STK: u64 = 2 * 1024 * 1024;
+
+/// Figurinha citada pelo `/rename`; Err = resposta pronta. Separada de `handle_rename` porque
+/// o `MessageContext` não se monta em teste (exigiria o feature `test-support`, proibido).
+fn rename_target(msg: &wa::Message) -> Result<&wa::message::StickerMessage, &'static str> {
+    let quoted = msg
+        .context_info()
+        .and_then(|c| c.quoted_message.as_option())
+        .map(|q| q.get_base_message());
+    let Some(stk) = quoted.and_then(|q| q.sticker_message.as_option()) else {
+        return Err(RENAME_USO);
+    };
+    if stk.file_length.is_some_and(|n| n > MAX_STK) {
+        return Err("Mídia pesada demais");
+    }
+    Ok(stk)
+}
+
 /// `/rename nome / autor` citando uma figurinha: baixa, troca o EXIF e reenvia (RF11/RF12).
 pub async fn handle_rename(
     ctx: &MessageContext,
@@ -328,19 +346,11 @@ pub async fn handle_rename(
         Ok(a) => a,
         Err(m) => return reply(ctx, sent, m).await,
     };
-    let quoted = ctx
-        .message
-        .context_info()
-        .and_then(|c| c.quoted_message.as_option())
-        .map(|q| q.get_base_message());
-    let Some(stk) = quoted.and_then(|q| q.sticker_message.as_option()) else {
-        return reply(ctx, sent, RENAME_USO).await;
+    let stk = match rename_target(&ctx.message) {
+        Ok(s) => s,
+        Err(m) => return reply(ctx, sent, m).await,
     };
     use whatsapp_rust::download::DownloadLimits;
-    const MAX_STK: u64 = 2 * 1024 * 1024;
-    if stk.file_length.is_some_and(|n| n > MAX_STK) {
-        return reply(ctx, sent, "Mídia pesada demais").await;
-    }
     let limits = DownloadLimits::new(MAX_STK + 65_536, MAX_STK);
     let bytes = match ctx.client.download(stk, limits).await {
         Ok(b) => b,
@@ -460,13 +470,10 @@ mod tests {
         m
     }
 
-    /// Nomes (recursivo) de um diretório, para comparar antes/depois.
+    /// Nomes do 1º nível de um diretório, para comparar antes/depois.
     fn tree(dir: &std::path::Path, out: &mut Vec<String>) {
         for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
             out.push(e.path().to_string_lossy().into_owned());
-            if e.path().is_dir() {
-                tree(&e.path(), out);
-            }
         }
     }
 
@@ -500,7 +507,8 @@ mod tests {
     }
 
     // Zero persistência (RF5): imagem e vídeo não deixam nada em /tmp nem /dev/shm.
-    // shortcut: compara a árvore inteira de /tmp; outro processo mexendo lá pode dar falso alarme.
+    // shortcut: compara só o 1º nível de /tmp e /dev/shm (a árvore inteira pegava o bot de
+    // teste em /tmp/silicon-*); arquivo novo de outro processo ali ainda dá falso alarme.
     #[tokio::test]
     #[ignore = "precisa de ffmpeg"]
     async fn make_leaves_nothing_on_disk() {
@@ -542,6 +550,28 @@ mod tests {
         for no in ["", "/renamex a/b", "/s", "oi /rename a/b"] {
             assert!(parse_rename(no).is_none(), "{no}");
         }
+    }
+
+    #[test]
+    fn rename_target_cases() {
+        let stk = |len| {
+            let mut s = wa::message::StickerMessage::default();
+            s.file_length = len;
+            let mut m = wa::Message::default();
+            m.sticker_message = MessageField::some(s);
+            quoting(m)
+        };
+        assert!(rename_target(&stk(Some(1000))).is_ok());
+        assert!(rename_target(&stk(None)).is_ok());
+        assert_eq!(
+            rename_target(&stk(Some(MAX_STK + 1))).unwrap_err(),
+            "Mídia pesada demais"
+        );
+        assert_eq!(rename_target(&quoting(img(None))).unwrap_err(), RENAME_USO);
+        assert_eq!(
+            rename_target(&wa::Message::default()).unwrap_err(),
+            RENAME_USO
+        );
     }
 
     #[test]

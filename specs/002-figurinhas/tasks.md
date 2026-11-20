@@ -62,3 +62,10 @@ painel; [WA] conferir ao tocar na figurinha. Depende: T10.
 Livres (sem build): T1–T6 juntos, depois T7. Serial: Builds 1–2 (`-j1`). **Fazer T10 do
 viewOnce o mais cedo possível**: se o dispositivo vinculado não receber a chave, a feature
 precisa ser repensada antes de T7/T9.
+
+## Manutenção 20/11/2026
+- `Limiter` agora descarta chats inativos (janela vencida, sem aviso pendente); teste `idle_chats_are_dropped`.
+- Teste instável achado: `make_leaves_nothing_on_disk` varria `/tmp` inteiro e pegava o bot de teste
+  (`/tmp/silicon-t10`); agora compara só o 1º nível de `/tmp` e `/dev/shm`. 3 execuções seguidas ok.
+- `handle`/`handle_rename` não se testam com `MessageContext` (montar `Client` exige o feature `test-support`,
+  proibido). Extraído `rename_target` (puro) com teste; o fluxo completo segue validado só no WhatsApp real.
