@@ -95,7 +95,7 @@ Eventos recentes só em memória (`VecDeque` de 200). Sem papéis = bot mudo (RF
 - Auth: argon2id; sessão = token aleatório de 32 bytes em `HashMap<token, expiry>` (12 h),
   cookie `HttpOnly; SameSite=Strict; Path=/` (+`Secure` sob HTTPS); middleware → `/login`.
 - Rate limit: `HashMap<IpAddr,(falhas, bloqueado_até)>`; 5 falhas → IP bloqueado 5 min.
-- Sem `password_hash` → força `127.0.0.1` e avisa no log (P5). POSTs conferem `Origin`/`Host`.
+- Sem `password_hash` → força `127.0.0.1` e avisa no log (P5). POSTs conferem `Origin`/`Host` (opcional: env `SILICON_PROXY_HOST` = host público de um proxy que troque o `Host`).
 - Nunca mostra conteúdo de mensagem nem dados da sessão.
 - T9: servir com `into_make_service_with_connect_info::<SocketAddr>()` (o login usa o IP).
 - RF13: papéis só por aqui. `owner_jid` vazio = sem dono.

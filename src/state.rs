@@ -40,15 +40,19 @@ pub struct AppState {
     pub https: bool,
 }
 
-/// Horário local "HH:MM:SS" de um instante unix (usa o fuso do sistema).
-pub fn local_hms(secs: u64) -> String {
+fn local_tm(secs: u64) -> libc::tm {
     let t = secs as libc::time_t;
     // SAFETY: `tm` é zerado e só preenchido por localtime_r (thread-safe) a partir de `t`.
-    let tm = unsafe {
+    unsafe {
         let mut tm: libc::tm = std::mem::zeroed();
         libc::localtime_r(&t, &mut tm);
         tm
-    };
+    }
+}
+
+/// Horário local "HH:MM:SS" de um instante unix (usa o fuso do sistema).
+pub fn local_hms(secs: u64) -> String {
+    let tm = local_tm(secs);
     format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
 }
 
@@ -57,7 +61,15 @@ pub struct LocalClock;
 
 impl tracing_subscriber::fmt::time::FormatTime for LocalClock {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
-        write!(w, "{}", local_hms(now()))
+        let tm = local_tm(now());
+        write!(
+            w,
+            "{:04}-{:02}-{:02} {}",
+            tm.tm_year + 1900,
+            tm.tm_mon + 1,
+            tm.tm_mday,
+            local_hms(now())
+        )
     }
 }
 

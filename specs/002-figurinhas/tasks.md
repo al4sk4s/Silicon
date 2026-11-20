@@ -64,8 +64,7 @@ viewOnce o mais cedo possível**: se o dispositivo vinculado não receber a chav
 precisa ser repensada antes de T7/T9.
 
 ## Manutenção 20/11/2026
-- `Limiter` agora descarta chats inativos (janela vencida, sem aviso pendente); teste `idle_chats_are_dropped`.
-- Teste instável achado: `make_leaves_nothing_on_disk` varria `/tmp` inteiro e pegava o bot de teste
-  (`/tmp/silicon-t10`); agora compara só o 1º nível de `/tmp` e `/dev/shm`. 3 execuções seguidas ok.
+- `Limiter` agora descarta chats inativos (janela vencida; só `max 0` mantém o aviso); teste `idle_chats_are_dropped`.
+- Teste instável **reproduzido e corrigido**: `make_leaves_nothing_on_disk` varria `/tmp` e pegava `silicon-*test*` de outros testes em paralelo e o bot de teste. Agora ignora nomes `silicon-*` e olha só o 1º nível. Antes: 1 falha em 30 execuções do binário sob carga; depois: 0 em 40.
 - `handle`/`handle_rename` não se testam com `MessageContext` (montar `Client` exige o feature `test-support`,
   proibido). Extraído `rename_target` (puro) com teste; o fluxo completo segue validado só no WhatsApp real.

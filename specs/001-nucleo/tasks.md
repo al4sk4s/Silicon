@@ -124,4 +124,4 @@ Livres (sem build): T2, T10; T3–T6 juntos. Serial (integração, `-j1`): Build
 ## Manutenção 20/11/2026
 - Painel e log mostram **horário local** (`state::local_hms`, via `libc::localtime_r`); antes era UTC.
 - Painel atrás de proxy reverso: env **`SILICON_PROXY_HOST=<host público>`** (opcional, padrão desligado) é aceito
-  como `Origin` além do `Host`/`:authority`. O proxy deve repassar `Host` ou o POST dá 403. Painel continua só LAN (P5).
+  como `Origin` além do `Host`/`:authority`. Só é preciso se o proxy trocar o `Host` pelo do upstream. Painel continua só LAN (P5).

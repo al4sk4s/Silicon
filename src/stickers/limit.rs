@@ -25,7 +25,7 @@ impl Limiter {
         // Descarta chats inativos (janela vencida e sem aviso pendente) para o mapa não crescer.
         map.retain(|k, (q, warned)| {
             k == chat
-                || *warned
+                || (*warned && q.is_empty()) // só max 0 mantém o aviso sem fila
                 || q.back()
                     .is_some_and(|t| now.saturating_duration_since(*t) < WINDOW)
         });
@@ -76,6 +76,15 @@ mod tests {
         l.check("b", t + Duration::from_secs(60), 2);
         let map = l.0.lock().unwrap();
         assert!(!map.contains_key("a") && map.contains_key("b"));
+        drop(map);
+        // avisado (max 1) e fora da janela também sai; max 0 mantém o aviso
+        let t2 = t + Duration::from_secs(60);
+        assert_eq!(l.check("c", t2, 1), Verdict::Allow);
+        assert_eq!(l.check("c", t2, 1), Verdict::DenyFirst);
+        assert_eq!(l.check("z", t2, 0), Verdict::DenyFirst);
+        l.check("b", t2 + Duration::from_secs(60), 2);
+        let map = l.0.lock().unwrap();
+        assert!(!map.contains_key("c") && map.contains_key("z"));
     }
 
     #[test]

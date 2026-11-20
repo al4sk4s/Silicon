@@ -473,7 +473,10 @@ mod tests {
     /// Nomes do 1º nível de um diretório, para comparar antes/depois.
     fn tree(dir: &std::path::Path, out: &mut Vec<String>) {
         for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
-            out.push(e.path().to_string_lossy().into_owned());
+            // `silicon-*`: outros testes (em paralelo) e o bot de teste criam isso aqui
+            if !e.file_name().to_string_lossy().starts_with("silicon-") {
+                out.push(e.path().to_string_lossy().into_owned());
+            }
         }
     }
 
