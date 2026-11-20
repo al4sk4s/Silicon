@@ -213,6 +213,7 @@ pub async fn run(st: Arc<AppState>, session_db: &str) -> Result<(), Box<dyn std:
         let phone = st.lock_pairing().phone.clone();
         let bot = build(&st, &sent, session_db, phone).await?;
         let client = bot.client();
+        *st.client.lock().unwrap_or_else(|e| e.into_inner()) = Some(client.clone());
         let ended = tokio::select! {
             reason = bot.run() => Some(reason),
             _ = st.restart.notified() => {
@@ -236,6 +237,7 @@ pub async fn run(st: Arc<AppState>, session_db: &str) -> Result<(), Box<dyn std:
                 return Err(format!("bot terminou sem pedido de shutdown: {reason:?}").into());
             }
         }
+        *st.client.lock().unwrap_or_else(|e| e.into_inner()) = None;
         let mut p = st.lock_pairing();
         p.qr = None;
         p.code = None;
