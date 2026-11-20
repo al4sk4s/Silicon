@@ -120,7 +120,7 @@ async fn handle_chat_cmd(
 }
 
 /// Atraso aleatório configurado (P8). Mínimo maior que máximo vira o mínimo.
-fn pick_delay(min: u64, max: u64) -> Duration {
+pub fn pick_delay(min: u64, max: u64) -> Duration {
     Duration::from_millis(rand::rng().random_range(min..=max.max(min)))
 }
 
@@ -142,7 +142,15 @@ async fn on_message(st: Arc<AppState>, sent: Arc<Sent>, ctx: MessageContext) {
     );
     // `owner_only`: dono em chat sem papel (spec 004) só dispara figurinha e `/c`.
     let (admin, owner_only) = match action {
-        Action::Drop | Action::Monitor => return, // Monitor: gancho da spec 003
+        Action::Drop => return,
+        Action::Monitor => {
+            // Spec 003: lê em silêncio; só o monitor envia, e só ao chat `alerta`.
+            // Mensagem nossa (is_from_me/eco) nunca vira alerta.
+            if !src.is_from_me && !sent.contains(ctx.info.id.as_str()) {
+                tokio::spawn(crate::monitor::trata(st, sent, ctx));
+            }
+            return;
+        }
         Action::Command { admin } => (admin, false),
         Action::Owner => (true, true),
     };

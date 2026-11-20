@@ -24,11 +24,11 @@ formato com `@`). Testes. Depende: T1.
 **Build 1** (integração): fmt + clippy + test `-j1`.
 
 ## Onda B — painel e integração (paralelas entre si, sem build)
-**T5. Painel `/rules` e `/alerts`** · módulo — `src/panel.rs` + campos novos em `src/state.rs` (`detector: RwLock<Arc<Detector>>`, `dedupe`, `limite`; **só T5 edita `state.rs`**, T6 só lê) e os 4 settings em `/settings`. CRUD de regras com ativar/desativar,
+**T5. [x] Painel `/rules` e `/alerts`** · módulo — `src/panel.rs` + campos novos em `src/state.rs` (`detector: RwLock<Arc<Detector>>`, `dedupe`, `limite`; **só T5 edita `state.rs`**, T6 só lê) e os 4 settings em `/settings`. CRUD de regras com ativar/desativar,
 **testar texto contra as regras**, compilar e trocar `Arc<RwLock<Detector>>` sem reiniciar;
 histórico. Testes `oneshot`. Depende: T2, T3, T4.
 
-**T6. `monitor::trata`** · integração — `src/monitor.rs` + gancho `Action::Monitor`: texto de
+**T6. [x] `monitor::trata`** · integração — `src/monitor.rs` + gancho `Action::Monitor`: texto de
 `text_content()`/`get_caption()`; dedupe → limite → silêncio; participantes do grupo `alerta`
 via `fetch_metadata` (cache 10 min) para `@`; envio **só** por `client.send_message(jid_alerta)`
 (texto ou `media_with_caption` reaproveitando o CDN); 2 retentativas (5 s, 30 s); atraso P8;

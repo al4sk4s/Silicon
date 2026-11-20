@@ -1,6 +1,6 @@
 # Spec 003 — Monitor de promoções (alerta de bug)
 
-Status: **decisões do dono aprovadas em 2026-11-20; aguardando aprovação do texto para `/planejar 003`** · Depende de: 001, 004 · Constituição 1.1.0 (sem emenda nova)
+Status: **implementada (T1–T6, 2026-11-20); falta validar no WhatsApp real (T7 [WA])** · Depende de: 001, 004 · Constituição 1.1.0 (sem emenda nova)
 
 ## Por quê
 No grupo de promoções saem "bugs de preço". O dono quer ser avisado na hora, sem ficar

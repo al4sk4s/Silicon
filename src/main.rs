@@ -5,6 +5,7 @@ mod detector;
 mod dispatch;
 mod lock;
 mod metrics;
+mod monitor;
 mod panel;
 mod roles;
 mod state;

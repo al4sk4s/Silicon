@@ -45,6 +45,7 @@ pub struct RegraCasada {
     pub nome: String,
 }
 
+#[derive(Default)]
 pub struct Detector {
     regras: Vec<(i64, String, Regex)>,
     ignorar: Vec<Regex>,
