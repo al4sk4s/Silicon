@@ -106,6 +106,10 @@ pub async fn run(
 
     let mut b = Bot::builder()
         .with_backend(backend)
+        // Nome que aparece em "Aparelhos conectados"; vale só no 1º pareamento.
+        .with_device_props(
+            whatsapp_rust::wacore::store::DevicePropsOverride::new().with_os("Silicon™"),
+        )
         .on_qr_code(|code, _ttl| async move {
             match qrcode::QrCode::new(code.as_bytes()) {
                 Ok(q) => println!(

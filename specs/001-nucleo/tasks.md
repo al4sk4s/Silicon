@@ -54,7 +54,7 @@ no `.db` da sessão. Depende: T3, T7, T8.
 **T10. [x] Deploy** · módulo (paralelo, sem build) — `deploy/silicon.service` (restart limitado,
 `RestartPreventExitStatus=2`, `StateDirectoryMode=0700`) + seção no README. Depende: —
 
-**Build 3** + **T11 [WA]** validação real (integração): QR, reinício sem QR,
+**Build 3** + **T11 [WA] [x]** validação real (integração): QR, reinício sem QR,
 loop de auto-resposta ausente, LID vs PN, logout pelo celular → exit 2, painel na LAN com
 HTTPS e bloqueio por senha.
 
@@ -76,7 +76,7 @@ Livres (sem build): T2, T10; T3–T6 juntos. Serial (integração, `-j1`): Build
 - Build 3: fmt, clippy `-D warnings` e 22 testes ok. Falta só T11 [WA].
 
 ## T11 [WA] — resultados parciais (19/11/2026, número principal, `SILICON_DATA_DIR=/tmp/silicon-t11`)
-**T11 continua `[ ]`** — faltam pequenas conferências (ver "Pendências" no fim desta seção).
+**T11 `[x]` (19/11/2026)** — tudo validado; só o item 5 ficou como pendência aceita pelo dono.
 - [x] 1a Pareamento por QR ok; pasta `0700`, `session.db`/`silicon.db`/`silicon.lock`/`panel-key.pem` `0600`.
   Obs.: `session.db-wal`/`-shm` nascem `0644` (umask do SQLite); a pasta `0700` protege.
 - [x] 1b Pair code (`SILICON_PAIR_PHONE`, DDI+DDD, 13 dígitos): código gerado antes do Connected → aceito no celular
@@ -115,3 +115,7 @@ Livres (sem build): T2, T10; T3–T6 juntos. Serial (integração, `-j1`): Build
 - [x] (d) `decide()` compara o JID do dono sem o sufixo `:NN` (`bare()` em `src/dispatch.rs`; teste `owner_matches_ignoring_device_suffix`; RF6 da spec ajustado). Só afeta a detecção do admin, não quem pode dar comandos (isso é só o papel do chat). 24 testes ok.
 - Decisão: `session.db-wal`/`-shm` ficam `0644` (pasta `0700` protege). DM por "JID manual" deve usar a forma `…@lid`.
 - Ainda pendentes: (a) fingerprint no navegador; item 5 (eco) com o aparelho de um amigo.
+- [x] (a) Fingerprint no Brave conferido pelo dono: igual ao do log (`CB:CB:79:…:5B:05`).
+- [x] Segundo aparelho (Lucas, 1:1 `93608963260605@lid`, papel `comando` por JID manual LID): 1 resposta, **1 evento `comando`** no painel, sem laço. O sender dele chega com sufixo `:93`.
+- [ ] 5 Eco: ainda **não exercitado** (stdout não registra mensagens; descartar o eco é silencioso). Pendência **aceita pelo dono**; `Sent` tem teste unitário. Rever se a spec 002 mostrar resposta duplicada.
+- Nome do aparelho no WhatsApp: `with_device_props(...with_os("Silicon™"))` em `wa.rs`; vale só num **novo** pareamento (a sessão de teste atual ainda mostra o nome antigo).
