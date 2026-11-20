@@ -221,16 +221,19 @@ pub async fn run(st: Arc<AppState>, session_db: &str) -> Result<(), Box<dyn std:
             }
         };
         if let Some(reason) = ended {
-            // QRs esgotados: a lib encerra a sessão sozinha; espera o "tentar de novo" do painel.
-            if st.lock_pairing().exhausted {
+            // QRs esgotados: a lib encerra a sessão sozinha (ShutdownRequested) e o evento pode chegar
+            // depois do fim do run, então a flag sozinha não basta. Nada no processo chama shutdown
+            // fora do "tentar de novo", logo esse motivo também espera o botão do painel.
+            let shutdown = matches!(
+                reason,
+                whatsapp_rust::RunCompletionReason::ShutdownRequested
+            );
+            if shutdown || st.lock_pairing().exhausted {
                 st.restart.notified().await;
             } else {
                 // Fim sem pedido de shutdown (ex.: reconexão esgotada): erro, para o systemd reiniciar.
                 // Logout já saiu com código 2 dentro de `on_logged_out`.
-                return match reason {
-                    whatsapp_rust::RunCompletionReason::ShutdownRequested => Ok(()),
-                    other => Err(format!("bot terminou sem pedido de shutdown: {other:?}").into()),
-                };
+                return Err(format!("bot terminou sem pedido de shutdown: {reason:?}").into());
             }
         }
         let mut p = st.lock_pairing();
@@ -273,8 +276,7 @@ async fn build(
             let st = s_qr.clone();
             async move {
                 // Só no terminal: sob o systemd o stdout vai para o journald (P4).
-                if !std::io::stdout().is_terminal() {
-                } else {
+                if std::io::stdout().is_terminal() {
                     match qrcode::QrCode::new(code.as_bytes()) {
                         Ok(q) => println!(
                             "Escaneie o QR no WhatsApp (Aparelhos conectados):\n{}",

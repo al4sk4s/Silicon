@@ -26,6 +26,7 @@ terminal. Quer-se um visual limpo (tons de cinza, botões simples) e o pareament
   no estado, **reinicia a sessão de pareamento** do bot (sem sair do processo). Vale só se não pareado.
 - RF5 Painel segue só LAN com senha (P5); nada novo escuta na rede.
 - RF6 Chats: o botão "liberar" usa o mesmo `set_role`/`clear_role`; `alerta` continua único.
+- RF7 Primeiro acesso: sem senha gravada, `/login` mostra "escolha a senha" (duas caixas). Só aceita de loopback; grava o hash e já loga. O `set-password` continua valendo.
 
 ## Fora do escopo
 Tema escuro, i18n, edição de configurações além do que já existe, desparear pelo painel.

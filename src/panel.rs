@@ -149,11 +149,38 @@ fn login_page(msg: &str) -> String {
 }
 
 async fn login_get(State(st): S) -> Html<String> {
-    Html(login_page(if has_password(&st) {
-        ""
-    } else {
-        "Login indisponível: defina a senha com `silicon set-password`."
-    }))
+    if has_password(&st) {
+        return Html(login_page(""));
+    }
+    Html(setup_page(""))
+}
+
+/// Primeiro acesso (sem senha gravada): o dono escolhe a senha aqui.
+fn setup_page(msg: &str) -> String {
+    format!(
+        "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
+         <title>Silicon - primeira senha</title><style>{CSS}</style></head><body><main><h1>Silicon</h1>\
+         <p>Primeiro acesso: escolha a senha do painel.</p><p>{}</p>\
+         <form class=\"card\" method=\"post\" action=\"/login\">\
+         <input type=\"password\" name=\"password\" placeholder=\"Senha\" autofocus> \
+         <input type=\"password\" name=\"password2\" placeholder=\"Repita\"> <button>Definir</button></form></main></body></html>",
+        esc(msg)
+    )
+}
+
+/// Cria a sessão do painel e devolve o redirect com o cookie.
+fn start_session(st: &AppState) -> Response {
+    let token = st.sessions.create();
+    let secure = if st.https { "; Secure" } else { "" };
+    let cookie = format!(
+        "silicon_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200{secure}"
+    );
+    let mut r = redirect("/");
+    r.headers_mut().insert(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&cookie).expect("cookie ascii"),
+    );
+    r
 }
 
 fn has_password(st: &AppState) -> bool {
@@ -168,10 +195,7 @@ async fn login_post(
     let ip: IpAddr = addr.ip();
     let hash = match st.store.password_hash() {
         Ok(Some(h)) if !h.is_empty() => h,
-        _ => {
-            let m = "Login indisponível: defina a senha com `silicon set-password`.";
-            return (StatusCode::SERVICE_UNAVAILABLE, Html(login_page(m))).into_response();
-        }
+        _ => return first_password(&st, ip, &f),
     };
     if st.limiter.blocked(ip, Instant::now()) {
         return (
@@ -190,17 +214,36 @@ async fn login_post(
             .into_response();
     }
     st.limiter.success(ip);
-    let token = st.sessions.create();
-    let secure = if st.https { "; Secure" } else { "" };
-    let cookie = format!(
-        "silicon_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200{secure}"
-    );
-    let mut r = redirect("/");
-    r.headers_mut().insert(
-        header::SET_COOKIE,
-        HeaderValue::from_str(&cookie).expect("cookie ascii"),
-    );
-    r
+    start_session(&st)
+}
+
+/// Sem senha gravada, só quem está na própria máquina (loopback) pode defini-la; o painel já
+/// escuta só em loopback nesse estado (P5). Vale a primeira que gravar.
+fn first_password(st: &AppState, ip: IpAddr, f: &HashMap<String, String>) -> Response {
+    let fail = |code, m| (code, Html(setup_page(m))).into_response();
+    if !ip.is_loopback() {
+        return fail(
+            StatusCode::FORBIDDEN,
+            "Defina a senha pela própria máquina.",
+        );
+    }
+    let pw = f.get("password").map_or("", String::as_str);
+    if pw.is_empty() || pw != f.get("password2").map_or("", String::as_str) {
+        return fail(
+            StatusCode::BAD_REQUEST,
+            "Senha vazia ou as duas não conferem.",
+        );
+    }
+    let saved = crate::auth::hash_password(pw)
+        .map_err(|e| e.to_string())
+        .and_then(|h| st.store.set("password_hash", &h).map_err(|e| e.to_string()));
+    match saved {
+        Ok(()) => start_session(st),
+        Err(_) => fail(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Não consegui salvar a senha.",
+        ),
+    }
 }
 
 async fn logout(State(st): S, headers: HeaderMap) -> Response {
@@ -628,6 +671,27 @@ mod tests {
             .unwrap();
         assert_eq!(r.status(), StatusCode::SEE_OTHER);
         assert_eq!(r.headers()[header::LOCATION], "/login");
+    }
+
+    #[tokio::test]
+    async fn first_access_sets_password() {
+        let (app, st) = app();
+        st.store.set("password_hash", "").unwrap();
+        let r = app
+            .clone()
+            .oneshot(post("/login", "password=a&password2=b", None, None))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        let r = app
+            .oneshot(post("/login", "password=novo&password2=novo", None, None))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::SEE_OTHER);
+        assert!(verify_password(
+            &st.store.password_hash().unwrap().unwrap(),
+            "novo"
+        ));
     }
 
     #[tokio::test]

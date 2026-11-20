@@ -68,8 +68,7 @@ Silicon
 
 > Isto é o plano; ainda não dá para rodar.
 
-```bash
-# 1. defina a senha do painel
+```bash   # ou deixe em branco: o 1º acesso ao painel (loopback) pede a senha na tela
 silicon set-password
 
 # 2. suba o bot e leia o QR Code uma única vez
