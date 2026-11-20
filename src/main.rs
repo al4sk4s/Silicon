@@ -164,6 +164,7 @@ async fn daemon(dir: &Path) -> Result<(), BoxErr> {
         Ok(_) => return Err("SILICON_PAIR_PHONE inválido: só dígitos, com DDI (8 a 15)".into()),
         Err(_) => None,
     };
+    st.lock_pairing().phone = pair;
     let session = dir.join("session.db");
     let session = session.to_str().ok_or("caminho da sessão não é UTF-8")?;
 
@@ -172,7 +173,7 @@ async fn daemon(dir: &Path) -> Result<(), BoxErr> {
     // Qualquer lado que terminar encerra o processo; wa::run Ok = shutdown pedido.
     tokio::select! {
         r = serve => r,
-        r = wa::run(st, session, pair) => r,
+        r = wa::run(st.clone(), session) => r,
     }
 }
 

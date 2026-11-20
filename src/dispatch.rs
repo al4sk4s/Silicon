@@ -3,7 +3,11 @@ use crate::roles::{ChatRoles, Role};
 #[derive(Debug, PartialEq, Eq)]
 pub enum Action {
     Drop,
-    Command { admin: bool },
+    Command {
+        admin: bool,
+    },
+    /// Dono em chat sem papel (spec 004): só figurinha e `/c`.
+    Owner,
     Monitor,
 }
 
@@ -29,17 +33,18 @@ pub fn decide(
         Ok(map) => map.get(chat).copied(),
         Err(_) => None,
     };
+    let is_owner = from_me
+        || owner.is_some_and(|o| {
+            let o = bare(o);
+            o == bare(sender) || sender_alt.is_some_and(|a| o == bare(a))
+        });
     match role {
         Some(Role::Monitorado) => Action::Monitor,
-        Some(Role::Comando) => Action::Command {
-            admin: from_me
-                || owner.is_some_and(|o| {
-                    let o = bare(o);
-                    o == bare(sender) || sender_alt.is_some_and(|a| o == bare(a))
-                }),
-        },
-        // Alerta é só destino; sem papel é ignorado.
-        Some(Role::Alerta) | None => Action::Drop,
+        Some(Role::Comando) => Action::Command { admin: is_owner },
+        // Alerta é só destino; sem papel só o dono passa (emenda 1.1.0 da constituição).
+        Some(Role::Alerta) => Action::Drop,
+        None if is_owner => Action::Owner,
+        None => Action::Drop,
     }
 }
 
@@ -55,13 +60,21 @@ mod tests {
     }
 
     #[test]
-    fn no_role_or_empty_drops() {
+    fn no_role_drops_everyone_but_owner() {
+        let vazio = roles(&[]);
         assert_eq!(
-            decide(&roles(&[]), "c", "s", None, true, Some("s")),
+            decide(&vazio, "c", "s", None, false, Some("x")),
             Action::Drop
         );
+        assert_eq!(decide(&vazio, "c", "s", None, false, None), Action::Drop);
+        assert_eq!(decide(&vazio, "c", "s", None, true, None), Action::Owner);
+        assert_eq!(
+            decide(&vazio, "c", "1:80@lid", None, false, Some("1@lid")),
+            Action::Owner
+        );
         let r = roles(&[("outro", Role::Comando)]);
-        assert_eq!(decide(&r, "c", "s", None, true, Some("s")), Action::Drop);
+        assert_eq!(decide(&r, "c", "s", None, true, Some("s")), Action::Owner);
+        assert_eq!(decide(&r, "c", "s", None, false, Some("x")), Action::Drop);
     }
 
     #[test]

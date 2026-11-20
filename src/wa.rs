@@ -1,6 +1,7 @@
 //! Ligação com o WhatsApp (T8): sessão, QR/pair code, handler de mensagens.
 //! Nunca registra nem guarda texto de mensagem (P4); só tipo, JID e horário.
 use crate::dispatch::{Action, decide};
+use crate::roles::Role;
 use crate::state::AppState;
 use rand::Rng;
 use std::collections::HashSet;
@@ -36,6 +37,87 @@ fn command_reply(_text: &str, _admin: bool) -> Option<String> {
     None
 }
 
+#[derive(Debug, PartialEq)]
+enum ChatCmd {
+    Allow,
+    Deny,
+    Status,
+    Usage,
+}
+
+/// `/c` ou `/comandos` + `allow|deny|status` (spec 004). Qualquer outro argumento vira `Usage`.
+fn parse_chat_cmd(text: &str) -> Option<ChatCmd> {
+    let mut w = text.split_whitespace();
+    let cmd = w.next()?.to_lowercase();
+    if cmd != "/c" && cmd != "/comandos" {
+        return None;
+    }
+    Some(match w.next().map(str::to_lowercase).as_deref() {
+        Some("allow") => ChatCmd::Allow,
+        Some("deny") => ChatCmd::Deny,
+        Some("status") => ChatCmd::Status,
+        _ => ChatCmd::Usage,
+    })
+}
+
+/// Executa `/c` do dono: muda o papel do chat atual e reage ✅ (ou responde uma linha).
+async fn handle_chat_cmd(
+    ctx: &MessageContext,
+    st: &AppState,
+    sent: &Sent,
+    chat: &str,
+    cmd: ChatCmd,
+) {
+    let role = st
+        .roles
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(chat)
+        .copied();
+    let text = match (cmd, role) {
+        (ChatCmd::Allow, None | Some(Role::Comando)) => {
+            let ok = role.is_some()
+                || st
+                    .store
+                    .set_role(chat, Role::Comando, None)
+                    .and_then(|_| st.reload_roles())
+                    .is_ok();
+            if ok {
+                st.push_event("comando_dono_allow", chat);
+            }
+            (!ok).then(|| "Não consegui salvar.".to_string())
+        }
+        (ChatCmd::Deny, Some(Role::Comando)) => {
+            let ok = st
+                .store
+                .clear_role(chat)
+                .and_then(|_| st.reload_roles())
+                .is_ok();
+            if ok {
+                st.push_event("comando_dono_deny", chat);
+            }
+            (!ok).then(|| "Não consegui salvar.".to_string())
+        }
+        (ChatCmd::Deny, None) => None,
+        (ChatCmd::Allow | ChatCmd::Deny, Some(_)) => {
+            Some("Este chat tem outro papel; use o painel.".into())
+        }
+        (ChatCmd::Status, r) => Some(format!(
+            "Papel deste chat: {}.",
+            r.map_or("nenhum", |r| r.as_str())
+        )),
+        (ChatCmd::Usage, _) => Some("Uso: /c allow | deny | status".into()),
+    };
+    let res = match text {
+        None => ctx.react("✅").await,
+        Some(t) => ctx.reply(t).await,
+    };
+    match res {
+        Ok(r) => sent.add(r.message_id.as_str()),
+        Err(_) => st.push_event("erro_envio", chat),
+    }
+}
+
 /// Atraso aleatório configurado (P8). Mínimo maior que máximo vira o mínimo.
 fn pick_delay(min: u64, max: u64) -> Duration {
     Duration::from_millis(rand::rng().random_range(min..=max.max(min)))
@@ -57,9 +139,11 @@ async fn on_message(st: Arc<AppState>, sent: Arc<Sent>, ctx: MessageContext) {
         src.is_from_me,
         owner.as_deref(),
     );
-    let admin = match action {
+    // `owner_only`: dono em chat sem papel (spec 004) só dispara figurinha e `/c`.
+    let (admin, owner_only) = match action {
         Action::Drop | Action::Monitor => return, // Monitor: gancho da spec 003
-        Action::Command { admin } => admin,
+        Action::Command { admin } => (admin, false),
+        Action::Owner => (true, true),
     };
     // Eco das nossas próprias respostas.
     if src.is_from_me && sent.contains(ctx.info.id.as_str()) {
@@ -74,6 +158,19 @@ async fn on_message(st: Arc<AppState>, sent: Arc<Sent>, ctx: MessageContext) {
         return;
     };
     if !text.starts_with('/') {
+        return;
+    }
+    if admin && let Some(c) = parse_chat_cmd(text) {
+        let min = st.store.delay_min_ms().unwrap_or(1000);
+        let max = st.store.delay_max_ms().unwrap_or(2000);
+        tokio::time::sleep(pick_delay(min, max)).await;
+        handle_chat_cmd(&ctx, &st, &sent, &chat, c).await;
+        return;
+    }
+    if owner_only
+        && !crate::stickers::parse_cmd(text)
+        && crate::stickers::parse_rename(text).is_none()
+    {
         return;
     }
     st.push_event("comando", &chat);
@@ -107,12 +204,40 @@ async fn on_message(st: Arc<AppState>, sent: Arc<Sent>, ctx: MessageContext) {
     }
 }
 
-/// Sobe o bot e bloqueia até o fim da sessão. `pair_phone` (só dígitos) pede pair code.
-pub async fn run(
-    st: Arc<AppState>,
+/// Sobe o bot e bloqueia até o fim da sessão. O número do pair code vem de `st.pairing.phone`;
+/// o painel pode pedir `st.restart` (tentar de novo / trocar número) e a sessão sobe de novo.
+pub async fn run(st: Arc<AppState>, session_db: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let sent = Arc::new(Sent::default());
+    loop {
+        let phone = st.lock_pairing().phone.clone();
+        let bot = build(&st, &sent, session_db, phone).await?;
+        let client = bot.client();
+        tokio::select! {
+            reason = bot.run() => {
+                // Fim sem pedido de shutdown (ex.: reconexão esgotada): erro, para o systemd reiniciar.
+                // Logout já saiu com código 2 dentro de `on_logged_out`.
+                return match reason {
+                    whatsapp_rust::RunCompletionReason::ShutdownRequested => Ok(()),
+                    other => Err(format!("bot terminou sem pedido de shutdown: {other:?}").into()),
+                };
+            }
+            _ = st.restart.notified() => {
+                let _ = client.shutdown().await;
+                let mut p = st.lock_pairing();
+                p.qr = None;
+                p.code = None;
+                p.exhausted = false;
+            }
+        }
+    }
+}
+
+async fn build(
+    st: &Arc<AppState>,
+    sent: &Arc<Sent>,
     session_db: &str,
     pair_phone: Option<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Bot, Box<dyn std::error::Error>> {
     let backend = SqliteStore::open(session_db).await?;
     // A sessão é segredo: só o dono do arquivo lê (P4).
     #[cfg(unix)]
@@ -120,8 +245,15 @@ pub async fn run(
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(session_db, std::fs::Permissions::from_mode(0o600))?;
     }
-    let sent = Arc::new(Sent::default());
-    let (s_msg, s_con, s_evt) = (st.clone(), st.clone(), st.clone());
+    let (s_msg, s_con, s_evt, s_qr, s_pc, s_ex) = (
+        st.clone(),
+        st.clone(),
+        st.clone(),
+        st.clone(),
+        st.clone(),
+        st.clone(),
+    );
+    let sent = sent.clone();
 
     let mut b = Bot::builder()
         .with_backend(backend)
@@ -129,17 +261,38 @@ pub async fn run(
         .with_device_props(
             whatsapp_rust::wacore::store::DevicePropsOverride::new().with_os("Silicon™"),
         )
-        .on_qr_code(|code, _ttl| async move {
-            match qrcode::QrCode::new(code.as_bytes()) {
-                Ok(q) => println!(
-                    "Escaneie o QR no WhatsApp (Aparelhos conectados):\n{}",
-                    q.render::<qrcode::render::unicode::Dense1x2>().build()
-                ),
-                Err(_) => eprintln!("Não consegui desenhar o QR."),
+        .on_qr_code(move |code, ttl| {
+            let st = s_qr.clone();
+            async move {
+                match qrcode::QrCode::new(code.as_bytes()) {
+                    Ok(q) => println!(
+                        "Escaneie o QR no WhatsApp (Aparelhos conectados):\n{}",
+                        q.render::<qrcode::render::unicode::Dense1x2>().build()
+                    ),
+                    Err(_) => eprintln!("Não consegui desenhar o QR."),
+                }
+                // QR/código são credenciais temporárias: só em memória, nunca no log (P4).
+                let mut p = st.lock_pairing();
+                p.qr = Some(code);
+                p.ttl = ttl.as_secs();
+                p.at = crate::state::now();
+                p.exhausted = false;
             }
         })
-        .on_pair_code(|code, _ttl| async move {
-            println!("Código de pareamento: {code}");
+        .on_pair_code(move |code, _ttl| {
+            let st = s_pc.clone();
+            async move {
+                println!("Código de pareamento: {code}");
+                st.lock_pairing().code = Some(code);
+            }
+        })
+        .on_event_for(&[EventKind::PairingQrCodesExhausted], move |_ev, _c| {
+            let st = s_ex.clone();
+            async move {
+                let mut p = st.lock_pairing();
+                p.qr = None;
+                p.exhausted = true;
+            }
         })
         .on_message(move |ctx| on_message(s_msg.clone(), sent.clone(), ctx))
         .on_connected(move |client| {
@@ -150,6 +303,7 @@ pub async fn run(
                     s.connected = true;
                     s.number = client.pn().map(|j| j.to_string());
                 }
+                *st.lock_pairing() = Default::default();
                 st.push_event("conectado", "");
                 match client.groups().list_participating().await {
                     Ok(list) => {
@@ -183,19 +337,23 @@ pub async fn run(
             ..Default::default()
         });
     }
-    let bot = b.build().await?;
-    let reason = bot.run().await;
-    // Fim sem pedido de shutdown (ex.: reconexão esgotada): erro, para o systemd reiniciar.
-    // Logout já saiu com código 2 dentro de `on_logged_out`.
-    match reason {
-        whatsapp_rust::RunCompletionReason::ShutdownRequested => Ok(()),
-        other => Err(format!("bot terminou sem pedido de shutdown: {other:?}").into()),
-    }
+    Ok(b.build().await?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chat_cmd_parser() {
+        assert_eq!(parse_chat_cmd("/c allow"), Some(ChatCmd::Allow));
+        assert_eq!(parse_chat_cmd("/COMANDOS Deny"), Some(ChatCmd::Deny));
+        assert_eq!(parse_chat_cmd("/c status x"), Some(ChatCmd::Status));
+        assert_eq!(parse_chat_cmd("/c"), Some(ChatCmd::Usage));
+        assert_eq!(parse_chat_cmd("/c foo"), Some(ChatCmd::Usage));
+        assert_eq!(parse_chat_cmd("/cx allow"), None);
+        assert_eq!(parse_chat_cmd("/s"), None);
+    }
 
     #[test]
     fn sent_set_and_delay() {

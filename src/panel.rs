@@ -1,4 +1,4 @@
-//! Painel local (T7): HTML puro, sem JS. Só metadados; nunca conteúdo de mensagem nem hash (P4/P5).
+//! Painel local (T7, spec 005): HTML server-side, CSS embutido e JS mínimo próprio. Só metadados; nunca conteúdo de mensagem nem hash (P4/P5).
 use crate::auth::verify_password;
 use crate::roles::Role;
 use crate::state::AppState;
@@ -59,6 +59,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/", get(index))
         .route("/chats", get(chats_get).post(chats_post))
         .route("/settings", get(settings_get).post(settings_post))
+        .route("/pair", get(pair_get).post(pair_post))
+        .route("/pair/state", get(pair_state))
         .layer(middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
 }
@@ -114,21 +116,34 @@ fn redirect(to: &str) -> Response {
     (StatusCode::SEE_OTHER, [(header::LOCATION, to.to_string())]).into_response()
 }
 
+const CSS: &str = "body{font:15px system-ui,sans-serif;background:#f4f4f5;color:#27272a;margin:0}\
+main{max-width:780px;margin:0 auto;padding:16px}nav{background:#fff;border-bottom:1px solid #e4e4e7;padding:10px 16px;display:flex;gap:16px;align-items:center}\
+nav a{color:#52525b;text-decoration:none}nav a:hover{color:#18181b}nav form{margin-left:auto}h1{font-size:20px}\
+.card{background:#fff;border:1px solid #e4e4e7;border-radius:8px;padding:12px 14px;margin:8px 0}\
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}\
+button{background:#3f3f46;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer}button:hover{background:#18181b}\
+button.off{background:#e4e4e7;color:#27272a}input,select{padding:6px;border:1px solid #d4d4d8;border-radius:6px}\
+code{color:#71717a;font-size:12px}.tag{background:#e4e4e7;border-radius:10px;padding:2px 8px;font-size:12px}\
+.tag.on{background:#3f3f46;color:#fff}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:4px;border-bottom:1px solid #e4e4e7}\
+.code{font:700 32px monospace;letter-spacing:4px}";
+
 fn page(title: &str, body: &str) -> String {
     format!(
-        "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><title>Silicon - {t}</title></head><body>\
-         <nav><a href=\"/\">Status</a> | <a href=\"/chats\">Chats</a> | <a href=\"/settings\">Ajustes</a> \
-         <form method=\"post\" action=\"/logout\" style=\"display:inline\"><button>Sair</button></form></nav>\
-         <h1>{t}</h1>{body}</body></html>",
+        "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
+         <title>Silicon - {t}</title><style>{CSS}</style></head><body>\
+         <nav><b>Silicon</b><a href=\"/\">Status</a><a href=\"/chats\">Chats</a><a href=\"/pair\">Pareamento</a><a href=\"/settings\">Ajustes</a>\
+         <form method=\"post\" action=\"/logout\"><button class=\"off\">Sair</button></form></nav>\
+         <main><h1>{t}</h1>{body}</main></body></html>",
         t = esc(title)
     )
 }
 
 fn login_page(msg: &str) -> String {
     format!(
-        "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><title>Silicon - entrar</title></head><body>\
-         <h1>Silicon</h1><p>{}</p><form method=\"post\" action=\"/login\">\
-         <input type=\"password\" name=\"password\" autofocus> <button>Entrar</button></form></body></html>",
+        "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
+         <title>Silicon - entrar</title><style>{CSS}</style></head><body><main><h1>Silicon</h1><p>{}</p>\
+         <form class=\"card\" method=\"post\" action=\"/login\">\
+         <input type=\"password\" name=\"password\" autofocus> <button>Entrar</button></form></main></body></html>",
         esc(msg)
     )
 }
@@ -245,41 +260,64 @@ fn chats_page(st: &AppState, msg: &str) -> String {
     for j in roles.keys() {
         chats.entry(j.clone()).or_default();
     }
-    let mut body = format!("<p>{}</p>", esc(msg));
+    let mut body = format!(
+        "<p>{}</p><input id=\"q\" placeholder=\"Buscar grupo ou contato…\" style=\"width:100%;box-sizing:border-box\">\
+         <script>q.oninput=()=>document.querySelectorAll('.chat').forEach(c=>c.hidden=!c.dataset.q.includes(q.value.toLowerCase()))</script>",
+        esc(msg)
+    );
     for (jid, label) in &chats {
         body += &chat_form(jid, label, roles.get(jid).copied());
     }
-    body += "<h2>JID manual</h2>";
+    body += "<h2>Adicionar por JID</h2>";
     body += &chat_form("", "", None);
     page("Chats", &body)
 }
 
 fn chat_form(jid: &str, label: &str, cur: Option<Role>) -> String {
-    let jid_field = if jid.is_empty() {
-        "<input name=\"jid\" placeholder=\"123@g.us\" required>".to_string()
-    } else {
-        format!(
-            "<code>{j}</code> <input type=\"hidden\" name=\"jid\" value=\"{j}\">",
-            j = esc(jid)
-        )
-    };
+    if jid.is_empty() {
+        // JID manual
+        return "<form class=\"card row\" method=\"post\" action=\"/chats\">\
+                <input name=\"jid\" placeholder=\"123@g.us\" required> \
+                <input type=\"hidden\" name=\"role\" value=\"comando\">\
+                <input name=\"name\" placeholder=\"nome (opcional)\"> <button>Liberar</button></form>"
+            .to_string();
+    }
+    let on = cur == Some(Role::Comando);
     let mut opts = String::new();
     for (v, txt) in [
-        ("none", "sem papel"),
         ("comando", "comando"),
         ("monitorado", "monitorado"),
         ("alerta", "alerta"),
     ] {
-        let sel = cur.map_or("none", |r| r.as_str()) == v;
+        let sel = cur.is_some_and(|r| r.as_str() == v);
         opts += &format!(
             "<option value=\"{v}\"{}>{txt}</option>",
             if sel { " selected" } else { "" }
         );
     }
+    let (next, btn, cls) = if on {
+        ("none", "Bloquear", " class=\"off\"")
+    } else {
+        ("comando", "Liberar", "")
+    };
     format!(
-        "<form method=\"post\" action=\"/chats\">{jid_field} <select name=\"role\">{opts}</select> \
-         nome: <input name=\"name\" value=\"{}\"> <button>Salvar</button></form>",
-        esc(label)
+        "<div class=\"card row chat\" data-q=\"{q}\"><div><b>{name}</b><br><code>{j}</code></div><div class=\"row\">\
+         <span class=\"tag{tc}\">{role}</span>\
+         <form method=\"post\" action=\"/chats\"><input type=\"hidden\" name=\"jid\" value=\"{j}\">\
+         <input type=\"hidden\" name=\"name\" value=\"{l}\"><input type=\"hidden\" name=\"role\" value=\"{next}\"><button{cls}>{btn}</button></form>\
+         <form method=\"post\" action=\"/chats\"><input type=\"hidden\" name=\"jid\" value=\"{j}\"><input type=\"hidden\" name=\"name\" value=\"{l}\">\
+         <select name=\"role\" onchange=\"this.form.submit()\"><option value=\"\" disabled{nosel}>outro papel…</option>{opts}</select></form></div></div>",
+        q = esc(&format!("{label} {jid}").to_lowercase()),
+        name = if label.is_empty() {
+            "(sem nome)".into()
+        } else {
+            esc(label)
+        },
+        j = esc(jid),
+        l = esc(label),
+        tc = if on { " on" } else { "" },
+        role = cur.map_or("sem papel", |r| r.as_str()),
+        nosel = if cur.is_none() { " selected" } else { "" },
     )
 }
 
@@ -339,6 +377,111 @@ fn settings_page(st: &AppState, msg: &str) -> String {
             esc(&publisher)
         ),
     )
+}
+
+fn qr_svg(code: &str) -> Option<String> {
+    let q = qrcode::QrCode::new(code.as_bytes()).ok()?;
+    Some(
+        q.render::<qrcode::render::svg::Color>()
+            .min_dimensions(260, 260)
+            .build(),
+    )
+}
+
+/// Fragmento do estado do pareamento (trocado a cada 2 s pelo JS da página).
+fn pair_fragment(st: &AppState) -> String {
+    let (connected, number) = {
+        let s = st.status.lock().unwrap_or_else(|e| e.into_inner());
+        (s.connected, s.number.clone())
+    };
+    if connected {
+        return format!(
+            "<div class=\"card\">Conectado como <b>{}</b>.</div>",
+            esc(number.as_deref().unwrap_or("?"))
+        );
+    }
+    let p = st.lock_pairing();
+    let mut o = String::new();
+    if let Some(code) = &p.code {
+        o += &format!(
+            "<div class=\"card\">Código de pareamento (WhatsApp &gt; Aparelhos conectados &gt; Conectar com número):<div class=\"code\">{}</div></div>",
+            esc(code)
+        );
+    }
+    match p.qr.as_deref().and_then(qr_svg) {
+        Some(svg) => {
+            let left = (p.at + p.ttl).saturating_sub(crate::state::now());
+            o += &format!(
+                "<div class=\"card\">Escaneie no WhatsApp (Aparelhos conectados). Este QR vale ~{left}s e troca sozinho.<br>{svg}</div>"
+            );
+        }
+        None if p.exhausted => {
+            o += "<div class=\"card\">O QR expirou. Use <b>Tentar de novo</b>.</div>"
+        }
+        None if p.code.is_none() => {
+            o += "<div class=\"card\">Aguardando o WhatsApp gerar o QR…</div>"
+        }
+        None => {}
+    }
+    o
+}
+
+async fn pair_state(State(st): S) -> Html<String> {
+    Html(pair_fragment(&st))
+}
+
+fn pair_page(st: &AppState, msg: &str) -> String {
+    let phone = st.lock_pairing().phone.clone().unwrap_or_default();
+    page(
+        "Pareamento",
+        &format!(
+            "<p>{}</p><div id=\"s\">{}</div>\
+             <form class=\"card\" method=\"post\" action=\"/pair\">\
+             Número (opcional, para parear por código): <input name=\"phone\" value=\"{}\" placeholder=\"5511999998888\" inputmode=\"numeric\"><br>\
+             <small>Só dígitos: DDI 55 + DDD + número, sem +, espaço ou traço. Ex.: <code>5511999998888</code>. Vazio = QR.</small><br><br>\
+             <button name=\"action\" value=\"save\">Salvar e reiniciar pareamento</button> \
+             <button class=\"off\" name=\"action\" value=\"retry\">Tentar de novo</button></form>\
+             <script>setInterval(async()=>{{try{{s.innerHTML=await (await fetch('/pair/state')).text()}}catch(e){{}}}},2000)</script>",
+            esc(msg),
+            pair_fragment(st),
+            esc(&phone)
+        ),
+    )
+}
+
+async fn pair_get(State(st): S) -> Html<String> {
+    Html(pair_page(&st, ""))
+}
+
+async fn pair_post(State(st): S, Form(f): Fields) -> Response {
+    let connected = st
+        .status
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .connected;
+    if connected {
+        return (
+            StatusCode::CONFLICT,
+            Html(pair_page(&st, "Já está pareado.")),
+        )
+            .into_response();
+    }
+    if f.get("action").map(String::as_str) != Some("retry") {
+        let phone = f.get("phone").map_or("", |s| s.trim());
+        if !phone.is_empty() && !crate::valid_phone(phone) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Html(pair_page(
+                    &st,
+                    "Número inválido: só dígitos com DDI (8 a 15), ex.: 5511999998888.",
+                )),
+            )
+                .into_response();
+        }
+        st.lock_pairing().phone = (!phone.is_empty()).then(|| phone.to_string());
+    }
+    st.restart.notify_one();
+    Html(pair_page(&st, "Reiniciando o pareamento…")).into_response()
 }
 
 async fn settings_get(State(st): S) -> Html<String> {
@@ -545,6 +688,69 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn pair_requires_login_validates_phone_and_csrf() {
+        let (app, st) = app();
+        let r = app
+            .clone()
+            .oneshot(
+                Request::get("/pair/state")
+                    .header("host", "localhost")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::SEE_OTHER);
+        let tok = st.sessions.create();
+        let r = app
+            .clone()
+            .oneshot(post("/pair", "phone=abc", None, Some(&tok)))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        let r = app
+            .clone()
+            .oneshot(post(
+                "/pair",
+                "phone=5511999998888",
+                Some("http://evil.com"),
+                Some(&tok),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::FORBIDDEN);
+        let r = app
+            .oneshot(post(
+                "/pair",
+                "phone=5511999998888&action=save",
+                None,
+                Some(&tok),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(st.lock_pairing().phone.as_deref(), Some("5511999998888"));
+    }
+
+    #[test]
+    fn pair_fragment_shows_qr_then_expired() {
+        let (_, st) = app();
+        {
+            let mut p = st.lock_pairing();
+            p.qr = Some("2@abc,def,ghi".into());
+            p.ttl = 20;
+            p.at = crate::state::now();
+        }
+        assert!(pair_fragment(&st).contains("<svg"));
+        {
+            let mut p = st.lock_pairing();
+            p.qr = None;
+            p.exhausted = true;
+        }
+        assert!(pair_fragment(&st).contains("expirou"));
     }
 
     #[tokio::test]

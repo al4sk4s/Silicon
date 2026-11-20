@@ -213,4 +213,15 @@ mod tests {
         assert!(out.len() <= ANIM_MAX);
         assert!(out.windows(4).any(|w| w == b"ANIM"));
     }
+
+    // Caminho real do bot: animado do ffmpeg + EXIF continua animado e carrega o EXIF.
+    #[tokio::test]
+    #[ignore = "precisa de ffmpeg"]
+    async fn animado_com_exif() {
+        let mkv = ffmpeg_gen(&["-c:v", "mpeg4", "-f", "matroska"]).await;
+        let out = to_animated(&mkv).await.unwrap();
+        let w = crate::stickers::exif::with_exif(&out, "Silicon™", "@al4sk4s").unwrap();
+        assert!(whatsapp_rust::webp::is_animated(&w));
+        assert!(w.windows(4).any(|x| x == b"EXIF"));
+    }
 }
