@@ -74,3 +74,18 @@ Livres (sem build): T2, T10; T3–T6 juntos. Serial (integração, `-j1`): Build
   Cert/chave em `<data_dir>/panel-{cert,key}.pem` (chave 0600); fingerprint SHA-256 no log a cada partida.
   `set-password` usa `stty -echo` (shortcut, só Unix). Argumento inválido sai com 64; erro com 1; 2 só logout.
 - Build 3: fmt, clippy `-D warnings` e 22 testes ok. Falta só T11 [WA].
+
+## T11 [WA] — resultados parciais (19/11/2026, número principal, `SILICON_DATA_DIR=/tmp/silicon-t11`)
+**T11 continua `[ ]`** — itens 4 (salvar papel/LID vs PN), 5 (anti-loop) e 6 (atraso, queda, logout→2) pendentes.
+- [x] 1a Pareamento por QR ok; pasta `0700`, `session.db`/`silicon.db`/`silicon.lock`/`panel-key.pem` `0600`.
+  Obs.: `session.db-wal`/`-shm` nascem `0644` (umask do SQLite); a pasta `0700` protege.
+- [ ] 1b Pair code (`SILICON_PAIR_PHONE`) e ordem pair code vs Connected: não testado.
+- [x] 2 Reinício reconecta sem QR; segunda instância → "outra instância já está rodando" (exit 1).
+- [x] 3 Painel loopback: `/chats` sem cookie → 303; login ok; `Origin` errado → 403; 5 falhas → 429 (a 6ª, mesmo com senha certa).
+- [x] 3 HTTPS (bind `0.0.0.0:8080`): fingerprint impresso = o servido (`openssl s_client`); cookie `Secure`.
+  **Bug achado e corrigido (`67dc085`):** HTTP/2 não manda `Host`, então todo POST sob HTTPS dava 403;
+  `same_origin` agora usa `uri.authority()` como fallback (teste `h2_login_uses_authority_not_host`).
+  Conferido com curl; **não** conferido num navegador de verdade.
+- [x] 3 `list_participating` popula `/chats` (grupos `@g.us` aparecem).
+- [ ] 3 "sem senha força loopback": não testado.
+- Artefato de teste: processo em background ignora SIGINT; usar SIGTERM. Ctrl+C real não testado.
