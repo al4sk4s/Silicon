@@ -1,106 +1,91 @@
 # Plano 003 — Monitor de promoções (alerta de bug)
 
-Status: rascunho · Spec: `specs/003-monitor-promocoes/spec.md` · Depende de: 001 ·
-Constituição 1.1.0 · whatsapp-rust @ `eeb24da`. ## Decisões a confirmar
-1. **Alerta = mensagem nova, não "encaminhada".** Texto: `client.send_message(alerta, msg)` com
-   `extended_text_message` + `context_info.mentioned_jid`. Imagem/vídeo:
-   `MessageExt::media_with_caption(&caption)` (`wacore/src/proto_helpers.rs:203`) **reaproveita
-   a referência no CDN, sem baixar nem reenviar a mídia**; depois `set_context_info` com as
-   menções. `forward_message` (`src/send/mod.rs:1540`) existe, mas remove as menções e marca
-   `is_forwarded` → descartado. Download em memória (`Client::download(.., DownloadLimits)`)
-   só se o CDN expirar (risco 2).
-2. **@todos.** A lib não tem "mencionar todos" (`group_mentions` é para subgrupo de comunidade).
-   Proposta: `client.groups().fetch_metadata(&alerta)` → `participants[].jid` (sem o bot) em
-   `mentioned_jid`, cache de 10 min, um `@<user>` no texto por pessoa (grupo pequeno).
-   Menção "oculta" (só em `mentioned_jid`) **não verificada**.
-3. **Normalização:** `unicode-normalization` 0.1.26 (NFD, tira marcas combinantes, minúsculas).
-4. **Regex:** `regex` 1.13.1 com `RegexBuilder::size_limit(64 KiB)` e `dfa_size_limit`. Motor
-   de tempo linear (sem ReDoS); limite só barra regra gigante. Regra que não compila é recusada
-   no painel.
+Status: **revisado em 2026-11-20 contra o código de `origin/main` @ `5a5e214` e a lib** · Spec: `specs/003-monitor-promocoes/spec.md` · Depende de: 001, 004 · Constituição 1.1.0 (sem divergência) · whatsapp-rust @ `eeb24da` (fixo)
+
+## Decisões a confirmar
+1. **Dependências novas (P7):** `regex` 1.13.1 (regras editáveis exigem regex; motor de tempo linear, sem ReDoS) e `unicode-normalization` 0.1.26 (tirar acento do texto; a std não faz). Licenças MIT/Apache-2.0 (P9). Sem elas, a regra "bug" vira `contains` e some a edição por regex no painel.
+2. **`@todos` não está verificado.** A lib só guarda `mentioned_jid` (`Vec<String>`); se menção só em `mentioned_jid` notifica, só o [WA] diz. Plano: o texto leva `@<user>` por pessoa **e** `mentioned_jid`. Se a notificação falhar no [WA], aceitar alerta sem notificação forte (o dono já está no grupo `alerta`) ou ajustar o texto.
+3. **Chat `alerta` pode ser grupo ou DM.** Menções só se for `@g.us`; em DM o alerta já notifica sozinho.
+
+## Lib: o que foi confirmado (rev `eeb24da`, arquivo:linha)
+- `Client::send_message(to: impl Into<Jid>, wa::Message) -> Result<SendResult, SendError>` (`src/send/mod.rs:1512`); `SendResult.message_id`.
+- Texto: `wa::Message{ extended_text_message: MessageField::some(ExtendedTextMessage{ text: Some(..), context_info: MessageField::some(ContextInfo{ mentioned_jid: Vec<String>, .. }), .. }), .. }` (padrão em `examples/demo.rs:211`).
+- `MessageExt` (`use whatsapp_rust::MessageExt`): `text_content()`, `get_caption()` (imagem, vídeo, documento), `media_with_caption(&str) -> Option<wa::Message>` (só imagem/vídeo; **clona a mensagem de mídia original, sem baixar nem reenviar**; traz o `context_info` antigo), `set_context_info(ContextInfo) -> bool` (**substitui** o contexto inteiro; sem merge) — `wacore/src/proto_helpers.rs:163-239`.
+- `client.groups().fetch_metadata(&Jid) -> GroupMetadata`; `participants[]{ jid, phone_number: Option, lid: Option }`; `jid` vem em PN ou LID conforme o `addressing_mode` do grupo (`src/features/groups.rs:1689, 810`).
+- `MessageInfo`: `source.{chat, sender, is_from_me, is_group, sender_alt}`, `id`, `push_name`, `timestamp.as_secs()`. Não existe `sender_pn`/`sender_lid`.
+- Próprio JID: `client.pn()` / `client.lid()` (`Option<Jid>`; `None` antes de parear). `get_pn`/`get_lid` **não existem**.
+- Plano B de mídia: `Client::download(&dyn Downloadable, DownloadLimits::new(wire, plain))` e `Client::upload(Vec<u8>, MediaType, UploadOptions::default())`.
 
 ## Módulos
-- `src/detector.rs` (novo, puro): `Regra{id,nome,re}`, `Msg<'a>{texto}`, `normaliza(&str)`,
-  `avalia(&Detector,&Msg) -> Option<RegraCasada{id,nome}>`. Aplica a lista de ignorar antes
-  (também regex, mesmo limite). Primeira regra ativa que casar vence (ordem por id).
-- `src/alerta.rs` (novo, puro): `Dedupe` (`HashMap<u64,Instant>`; chave = hash do texto
-  normalizado ou do 1º link sem query de rastreio; janela padrão 30 min), `Limite`
-  (`VecDeque` de instantes; 10/h), `em_silencio(agora, ini, fim)` (aceita intervalo que cruza
-  a meia-noite), `formata(...)`.
-- `src/dispatch.rs`: `Action::Monitor` → `monitor::trata(ctx)` em `tokio::spawn`. Texto de
-  `msg.text_content()` ou `msg.get_caption()`. Autor: `ctx.info.source.sender`; pushname:
-  `ctx.info.push_name`; hora: `ctx.info.timestamp`. **Nunca** `ctx.send_message`/`reply` (iriam
-  ao chat de origem); sempre `client.send_message(jid_alerta, ..)`.
-- `src/monitor.rs` (novo): extração, menções (cache), envio com retry.
-- `src/config.rs` (migração v2): tabelas `rules`, `ignore`, `alert_log` + settings.
-- `src/panel.rs`: `/regras` (CRUD, ativar/desativar, **testar um texto contra as regras**) e
-  `/alertas` (histórico). Cada escrita recompila e troca `Arc<RwLock<Detector>>` sem reiniciar.
+- `src/detector.rs` (novo, puro): `normaliza(&str)` (NFD, sem marcas, minúsculas); `Detector{regras, ignorar}` compilado com `RegexBuilder::size_limit(64 KiB)`/`dfa_size_limit`; `avalia(&Detector, &str) -> Option<RegraCasada{id, nome}>` (ignorar vence; primeira regra ativa por id). Regra inválida/gigante é recusada com erro legível.
+- `src/alerta.rs` (novo, puro): `Dedupe` (`HashMap<u64, Instant>`, chave = hash do 1º link sem query de rastreio, senão do texto normalizado; janela `dedupe_min`, com limpeza de vencidos), `Limite` (`VecDeque<Instant>`, `alertas_hora`), `em_silencio(hora_atual, ini, fim)` (aceita intervalo que cruza meia-noite; vazio = desligado), `formata(...)`.
+- `src/monitor.rs` (novo): `trata(st, client, ctx)` — fluxo abaixo; cache de participantes do grupo `alerta` (10 min); envio com retry.
+- `src/wa.rs`: no `on_message`, `Action::Monitor` deixa de dar `return` e chama `monitor::trata` num `tokio::spawn` (nunca bloqueia o handler). Mensagens `is_from_me` e eco de `Sent` são ignoradas.
+- `src/config.rs`: migração (tabelas `rules`, `ignore`, `alert_log`) + CRUD, `purge` e getters/setters de settings (padrão seguro abaixo). Usa o `Store` existente (`get`/`set`).
+- `src/state.rs`: `AppState` ganha `detector: RwLock<Arc<Detector>>`, `dedupe`, `limite` (Mutex). Cada escrita no painel recompila e troca o `Arc` sem reiniciar. Eventos reaproveitam `push_event` (`alerta_enviado`, `alerta_falhou`, `alerta_sem_destino`; JID do chat, sem conteúdo).
+- `src/panel.rs`: abas **Regras** (`/rules`: CRUD, ativar/desativar, lista de ignorar, **testar um texto**) e **Alertas** (`/alerts`: histórico). Mesmo login, CSRF/Origin e `esc()` das rotas atuais; links no menu. Ajustes (`/settings`) ganha os 4 settings do monitor.
 
 ```sql
 CREATE TABLE rules(id INTEGER PRIMARY KEY, nome TEXT NOT NULL, padrao TEXT NOT NULL, ativa INTEGER NOT NULL DEFAULT 1);
 INSERT INTO rules(nome,padrao) VALUES('bug','\bbug(s|ad[oa]s?|ou|ar|ando|uei|zao|zinho|ue[im])?\b');
 CREATE TABLE ignore(id INTEGER PRIMARY KEY, padrao TEXT NOT NULL);
 CREATE TABLE alert_log(ts INTEGER NOT NULL, regra TEXT NOT NULL, resumo TEXT NOT NULL); -- resumo ≤ 80 chars, sem mídia
--- settings: dedupe_min(30) alertas_hora(10) silencio_ini/fim(vazio=off) retencao_dias(7)
 ```
-**Regex padrão revisada.** O texto chega normalizado (sem acento), então `ão` vira `ao` e a
-alternativa útil é `zao`. Deve casar: bug, bugs, bugado, BUGADA, bugados, bugou, bugar,
-bugando, buguei, bugzão, bugzinho. Não deve casar: debug, debugar, bugatti, ebuggy. `\b` é
-Unicode no crate. Purge `DELETE FROM alert_log WHERE ts<?` na partida e a cada hora.
+Regex padrão revisada: o texto chega sem acento (`ão`→`ao`). Deve casar: bug, bugs, bugado, BUGADA, bugados, bugou, bugar, bugando, buguei, bugzão, bugzinho. Não casa: debug, debugar, bugatti, ebuggy. Purge de `alert_log` (`ts < agora − retencao_dias`) na partida e a cada hora.
+
+## Fluxo de `monitor::trata`
+1. Texto = `text_content()` ou `get_caption()`; sem texto → fim. `Detector.avalia`; sem regra → fim (nada é gravado).
+2. `Dedupe` → `Limite` → `em_silencio`: qualquer um barra → descarta (sem fila) e registra evento.
+3. Destino = papel `alerta` lido **na hora** (`st.roles`); ausente → `alerta_sem_destino`, nada é enviado. Destino ≠ origem (garantido por papel único por chat).
+4. Atraso P8 (`delay_min/max_ms`, mesmo da 001) e envio **só** via `client.send_message(jid_alerta, ..)`. **Nunca** `ctx.reply`/`ctx.react`/`send_message` ao chat de origem; sem read receipt.
+5. Texto: `ExtendedTextMessage` com o formato abaixo + `mentioned_jid`. Imagem/vídeo: `media_with_caption(legenda_formatada)` → `set_context_info(ContextInfo{mentioned_jid})` (já descarta o contexto antigo, incluindo citação/encaminhado). `None` (tipo sem mídia) → cai para texto.
+6. Menções: se destino `@g.us`, `fetch_metadata` (cache 10 min), `participants[].jid` menos `pn()`/`lid()` do bot; um `@<user>` no texto por pessoa. Falha no `fetch_metadata` → alerta sem menções (não perde o alerta).
+7. Falha de envio: até 2 retentativas (5 s e 30 s), depois `alerta_falhou` (sem conteúdo). Erros ficam presos na task; nunca derrubam o daemon.
+8. Sucesso: `alert_log` (regra, resumo 80 chars) + `alerta_enviado`; `sent.add(message_id)` para o anti-eco.
 
 ## Formato do alerta
 ```
 🔔 Regra: bug
-Grupo: <nome>
+Grupo: <nome do chat monitorado, senão JID>
 De: <pushname> (<user>)
 Hora: 14:32
-<link se houver>
+<link, se houver>
 
 <texto original>
 
 @<u1> @<u2>
 ```
-Com mídia, o texto vai como legenda, truncada em ~1000 caracteres.
+Com mídia, o texto vai como legenda, truncada em ~1000 caracteres. Hora local (`state::local_hms`).
 
-## Garantias
-- **P1/P2:** destino vem só do papel `alerta` lido na hora do envio. Sem chat `alerta`, nada é
-  enviado e o log registra "sem alerta". Teste: destino ≠ origem; `monitorado` nunca é destino.
-- **Falha de envio:** até 2 retentativas (5 s e 30 s), depois desiste e registra evento sem
-  conteúdo. Erros ficam presos na task; nunca derrubam o daemon.
-- **P8:** atraso 1–2 s (mesmo `delay_*` da 001) + dedupe + limite/hora + silêncio. No
-  silêncio a mensagem é descartada (sem fila).
-- **RF1:** o fluxo `monitorado` não envia read receipt nem reação.
+## Config e padrões seguros
+Settings (tabela `settings` já existente): `dedupe_min`=30, `alertas_hora`=10, `silencio_ini`/`silencio_fim`=vazio (desligado), `retencao_dias`=7. Sem chat `alerta` ou sem chat `monitorado` = monitor inerte (bot mudo). Regra `bug` vem ativa; lista de ignorar vem vazia.
 
-## Testes `cargo test` (sem rede)
-Detector (casa/não casa, acentos, ignorar vence regra, regra inválida recusada, desativada
-ignorada); dedupe (dentro/fora da janela, mesmo link com textos diferentes); limite (11º
-bloqueado); silêncio (inclui 22h–7h); formata (snapshot); Store (CRUD de regras, purge de 7
-dias); destino nunca igual ao monitorado.
-**Só com WhatsApp real:** notificação do @todos, menção sem `@` no texto,
-`media_with_caption` dias depois (CDN expirado?), LID vs PN dos participantes, latência < 5 s.
+## Garantias (constituição)
+- **P1/P2:** único envio por conta própria é para o chat `alerta`; `monitorado` nunca recebe nada; `alerta` segue `Drop` no `decide`. Sem ligação, sem feature `voip`.
+- **P4/P6:** histórico guarda só resumo de 80 chars, sem mídia, 7 dias; conteúdo das promoções não sai para serviço externo; logs/eventos só com JID e tipo.
+- **P8:** atraso + dedupe + limite/hora + silêncio; sem rajada, sem fila acumulada.
+
+## Testes
+**`cargo test` (sem rede):** detector (lista de casa/não casa acima, acentos, ignorar vence regra, regra inválida/gigante recusada, desativada ignorada); dedupe (dentro/fora da janela, mesmo link com textos diferentes); limite (11º bloqueado, janela desliza); silêncio (inclui 22h–7h e vazio=off); `formata` (snapshot, truncamento); Store (CRUD de regras, migração em banco existente, purge de 7 dias); painel `oneshot` (sem login redireciona, CSRF barra, regex inválida → 400 sem gravar, "testar texto"); função pura que escolhe o destino (monitorado nunca é destino, origem ≠ destino, sem `alerta` → nenhum envio).
+**Só com WhatsApp real [WA] (bot do notebook, comigo presente):** alerta chega com a regra citada; **`@todos` notifica** (menção em `mentioned_jid` com/sem `@` no texto); LID vs PN dos participantes; `media_with_caption` com mídia de dias atrás (CDN expirado?); latência < 5 s; nada é enviado ao grupo monitorado.
 
 ## Riscos
-1. Ban: envio automático 24/7 do número principal. Limites ativos por padrão; recomendado chip
-   secundário.
-2. Referência de mídia no CDN pode expirar. Alternativa: `download` (`DownloadLimits` 16 MiB) →
-   `upload` → nova mensagem; se falhar, só texto.
-3. Lib pré-1.0: rev fixado.
-4. Privacidade: histórico guarda só resumo de 80 caracteres, apagado em 7 dias.
+1. **Ban:** envio automático 24/7 do número principal. Limites ativos por padrão; recomendado chip secundário (troca de sessão, sem mudar código).
+2. **Mídia no CDN expira:** plano B (T8): `download` (limite 16 MiB) → `upload` → nova mensagem; se falhar, só texto.
+3. **Menção em LID:** grupo em modo LID pode exigir o `jid` certo em `mentioned_jid`; validar no [WA].
+4. **Lib pré-1.0:** rev fixado; a API acima foi lida no código desse rev.
+5. **Falso positivo/negativo da regex:** só a palavra `bug`; a lista de ignorar e o "testar texto" do painel reduzem o ajuste às cegas.
+6. **`pn()`/`lid()` `None` logo após o boot:** se faltar, não filtra o bot das menções (inofensivo).
 
 ## Fragmentação
 | # | Passo | Arquivos | Agente | Depende |
 |---|---|---|---|---|
-| 1 | Deps `regex`=1.13.1, `unicode-normalization`=0.1.26 | Cargo.toml | módulo | 001 pronto |
-| 2 | `detector.rs` + testes | src/detector.rs | módulo | 1 |
-| 3 | `alerta.rs` (dedupe, limite, silêncio, formata) + testes | src/alerta.rs | módulo | 1 |
-| 4 | Migração v2, CRUD, purge + testes | src/config.rs | módulo | 1 |
-| 5 | Painel `/regras` e `/alertas` + oneshot | src/panel.rs | módulo | 2, 4 |
-| 6 | `monitor::trata` no dispatch: extração, menções, envio com retry | src/dispatch.rs, src/monitor.rs | integração | 2, 3, 4 |
-| 7 | Validar com WhatsApp real | — | integração | 6 |
+| 1 | Deps `regex`=1.13.1, `unicode-normalization`=0.1.26 | Cargo.toml | você | — |
+| 2 | `detector.rs` + testes | src/detector.rs | worker | 1 |
+| 3 | `alerta.rs` (dedupe, limite, silêncio, formata) + testes | src/alerta.rs | worker | 1 |
+| 4 | Migração, CRUD, settings, purge + testes | src/config.rs | worker | — |
+| 5 | Painel `/rules` e `/alerts` + settings + oneshot | src/panel.rs, src/state.rs | worker | 2, 4 |
+| 6 | `monitor::trata` + gancho no `wa.rs` | src/monitor.rs, src/wa.rs, src/state.rs | você | 2, 3, 4 |
+| 7 | Validar com WhatsApp real (T7) e plano B de mídia se precisar (T8) | — | você + dono | 6 |
 
-Paralelo: 2, 3 e 4 juntos; depois 5 junto com 6. Só a integração roda cargo. Serial: a integração
-roda `cargo build/clippy -D warnings/test -j1` após cada onda (1; 2–4; 5–6). Erro difícil de
-tipos com `wa::Message` → revisão mais cuidadosa.
-
-## Não verificado
-`mentioned_jid` sem `@user` no texto notifica?; validade da mídia reaproveitada do CDN; caminho
-exato até `ctx.info` (campos vieram de `wacore/src/types/message.rs:436-438`).
+Paralelo: 2, 3 e 4 juntos (arquivos diferentes, sem build); depois 5 junto com 6 (`state.rs` é compartilhado: um só edita). Só o agente principal roda cargo: `fmt`, `clippy -j1 --all-targets -- -D warnings`, `test -j1 -- --include-ignored` após cada onda.
