@@ -17,6 +17,33 @@ pub fn parse_cmd(text: &str) -> bool {
 
 /// Tamanho máximo (em caracteres) de nome e autor.
 pub const MAX_FIELD: usize = 64;
+/// Variantes de resposta (sorteadas, para não soar robótico).
+const CALMA: &[&str] = &[
+    "Calma, muitas figurinhas agora",
+    "Opa, devagar com as figurinhas!",
+    "Ei, respira! Já fiz figurinha demais por agora",
+    "Segura a onda, tô fazendo figurinha o mais rápido que dá",
+    "Muita figurinha de uma vez, espera um pouquinho",
+    "Calma aí, a fábrica de figurinhas precisa de um minuto",
+    "Vai com calma, já passou do limite por agora",
+    "Pera um pouco, tô sobrecarregado de figurinha",
+];
+const USO_S: &[&str] = &[
+    "Responda uma imagem ou vídeo com /s",
+    "Cadê a mídia? Responda uma imagem ou vídeo com /s",
+    "Preciso de uma imagem ou vídeo: responda a um com /s",
+    "Para fazer figurinha, responda uma imagem ou vídeo com /s",
+    "Faltou citar a mídia! Responda uma imagem ou vídeo com /s",
+    "Me mostra o que virar figurinha: responda uma imagem ou vídeo com /s",
+    "Sem mídia não tem figurinha. Responda uma imagem ou vídeo com /s",
+    "Ué, responda uma imagem ou vídeo com /s que eu faço a figurinha",
+];
+
+fn variante(opcoes: &'static [&'static str]) -> &'static str {
+    use rand::Rng;
+    opcoes[rand::rng().random_range(0..opcoes.len())]
+}
+
 const RENAME_USO: &str = "Responda uma figurinha com /rename nome / autor";
 
 /// `/rename nome / autor`. None se não for o comando; Err(resposta curta) se estiver mal formado.
@@ -112,7 +139,7 @@ async fn allowed(
     match st.sticker_limit.check(chat, std::time::Instant::now(), max) {
         limit::Verdict::Allow => true,
         limit::Verdict::DenyFirst => {
-            reply(ctx, sent, "Calma, muitas figurinhas agora").await;
+            reply(ctx, sent, variante(CALMA)).await;
             false
         }
         limit::Verdict::DenySilent => false,
@@ -135,7 +162,7 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
         return reply("ffmpeg ausente").await;
     }
     let Ok(src) = pick_source(&ctx.message) else {
-        return reply("Responda uma imagem ou vídeo com /s").await;
+        return reply(variante(USO_S)).await;
     };
     // Não suportado: a citação vem sem media_key (T10); nem tenta baixar.
     if src.view_once {
@@ -281,6 +308,13 @@ async fn send_webp(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn variantes_nao_vazias() {
+        assert!(super::CALMA.len() >= 5 && super::USO_S.len() >= 5);
+        assert!(super::USO_S.iter().all(|t| t.contains("/s")));
+        assert!(super::CALMA.contains(&super::variante(super::CALMA)));
+    }
+
     use super::*;
 
     fn img(view_once: Option<bool>) -> wa::Message {
