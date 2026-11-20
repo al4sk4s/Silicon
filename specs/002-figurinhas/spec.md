@@ -85,7 +85,14 @@ mídia como não criptografada e exige `file_sha256`). Resposta ao usuário: "N�
 (ex.: remover viewOnce da spec e responder só "não suportado"). Vídeo de visualização única não foi testado
 (mesmo mecanismo). Estática/animada normais: ainda por validar.
 
+## Resultado do T11/T12 [WA] (20/11/2026)
+Passou tudo no WhatsApp real (dono): nome `Silicon™`/autor `@al4sk4s` aparecem ao tocar na figurinha estática e na animada;
+campos trocados no painel valem nas novas; `/rename a / b`, `/rename /`, `/rename só nome` (erro), sem citar (uso) e campo >64
+(recusa) funcionaram. A figurinha citada veio com `media_key` (download ok). EXIF aceito pelo app; nada a investigar.
+
 ## Resultado do T10 [WA] (20/11/2026)
+Fechado: Android e iOS animam, sem duplicata; legenda, `/s` sem citar e rajada ("Calma" uma vez) ok; tempos: imagem 3–3,5 s,
+vídeo ~7 s (alvo <10 s).
 Imagem não quadrada, vídeo e GIF respondidos com `/s` no grupo de teste: figurinhas **perfeitas** (dono). Mídia é esticada
 para 512x512 (decisão do dono: sem corte nem barras, proporção distorcida). Sem EXIF funciona. Pendentes: Android/iOS
 lado a lado, rajada/"Calma…", `/s` sem citar, tempos medidos. Probe do ffmpeg: timeout subiu para 30 s (boot falhava

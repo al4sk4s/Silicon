@@ -46,16 +46,16 @@ de `data_dir`, `temp_dir()` e `/dev/shm` antes/depois de `handle_bytes(view_once
 **Build 2** (integração) após T8–T9.
 
 ## Onda C — validação e opcional
-**T10. [WA] Validação real (viewOnce: ✗ sem media_key, ver spec; resto pendente)** · integração — figurinha estática e animada abrem no Android/iOS;
+**T10. [x] Validação real (viewOnce: ✗ sem media_key, deprecado; resto passou em 20/11/2026)** · integração — figurinha estática e animada abrem no Android/iOS;
 aceita sem EXIF; **viewOnce: a citação traz `media_key` e o dispositivo vinculado baixa?**
 (risco maior: fazer **primeiro**, antes de polir); GIF do app vem com faststart; tempos.
 Depende: T8.
 
-**T11. [x] EXIF: nome e autor (código pronto; [WA] pendente)** · módulo — `src/stickers/exif.rs` (chunk `EXIF`), campos
+**T11. [x] EXIF: nome e autor ([WA] validado 20/11/2026: estática e animada mostram nome/autor; painel vale só nas novas)** · módulo — `src/stickers/exif.rs` (chunk `EXIF`), campos
 `sticker_pack_name`=`Silicon™` e `sticker_publisher`=`@al4sk4s` em Ajustes (RF10); teste de `with_exif` e do
 painel; [WA] conferir ao tocar na figurinha. Depende: T10.
 
-**T12. [x] `/rename` (código pronto; [WA] pendente)** · comando — `parse_rename` + handler (RF11/RF12): cita figurinha, troca nome/autor,
+**T12. [x] `/rename` ([WA] validado 20/11/2026: `a / b`, `/`, sem `/`, sem citar, >64)** · comando — `parse_rename` + handler (RF11/RF12): cita figurinha, troca nome/autor,
 `/rename /` limpa. Teste do parser; [WA] real. Depende: T11.
 
 ## Paralelismo
