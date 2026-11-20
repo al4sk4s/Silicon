@@ -1,4 +1,3 @@
-#![allow(dead_code)] // até a Onda B ligar
 //! Peças puras do alerta (spec 003): dedupe, limite por hora, silêncio e formato.
 
 use std::collections::hash_map::DefaultHasher;

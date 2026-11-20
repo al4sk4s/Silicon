@@ -56,3 +56,6 @@ se algo mudar, rodar `/gerar-prompt`. Depende: T7 (e T8 se houve).
 
 Independente desta spec: **005/T5 (métricas RAM/CPU no Status)**, em `specs/005-painel-pareamento/tasks.md`.
 Mexe em `panel.rs` e `state.rs` como o T5 daqui: fazer em onda separada (nunca em paralelo).
+
+## Pendente (20/11/2026)
+T7 [WA], T8 e T9 abertos: exigem o dono presente. **Antes de implantar no notebook**, conferir quais chats têm papel `monitorado`/`alerta` (o binário novo liga o monitor assim que os dois existirem) e decidir sobre o chip secundário.

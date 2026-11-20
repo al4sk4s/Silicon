@@ -1312,6 +1312,19 @@ mod tests {
             assert_eq!(r.status(), StatusCode::BAD_REQUEST);
         }
         assert_eq!(st.store.rules().unwrap().len(), antes);
+        // texto do usuário volta escapado (nome e mensagem de erro da regex)
+        let r = app
+            .clone()
+            .oneshot(post(
+                "/rules",
+                "action=add&nome=%3Cb%3E&padrao=%28%3Cb%3E",
+                None,
+                Some(&tok),
+            ))
+            .await
+            .unwrap();
+        let h = body_of(r).await;
+        assert!(!h.contains("(<b>") && h.contains("&lt;b&gt;"));
         // regra válida passa a casar no "testar texto"
         let r = app
             .clone()

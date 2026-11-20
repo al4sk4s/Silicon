@@ -218,7 +218,6 @@ impl Store {
     // ---- Monitor (spec 003) ----
 
     /// Regras (id, nome, padrão, ativa). O padrão NÃO é validado aqui (o painel usa `detector::valida`).
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn rules(&self) -> Result<Vec<(i64, String, String, bool)>> {
         let conn = self.conn();
         let mut stmt = conn.prepare("SELECT id, nome, padrao, ativa FROM rules ORDER BY id")?;
@@ -226,7 +225,6 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn add_rule(&self, nome: &str, padrao: &str) -> Result<i64> {
         let conn = self.conn();
         conn.execute(
@@ -236,7 +234,6 @@ impl Store {
         Ok(conn.last_insert_rowid())
     }
 
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn update_rule(&self, id: i64, nome: &str, padrao: &str) -> Result<()> {
         self.conn().execute(
             "UPDATE rules SET nome = ?2, padrao = ?3 WHERE id = ?1",
@@ -245,7 +242,6 @@ impl Store {
         Ok(())
     }
 
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn set_rule_active(&self, id: i64, ativa: bool) -> Result<()> {
         self.conn().execute(
             "UPDATE rules SET ativa = ?2 WHERE id = ?1",
@@ -254,14 +250,12 @@ impl Store {
         Ok(())
     }
 
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn delete_rule(&self, id: i64) -> Result<()> {
         self.conn()
             .execute("DELETE FROM rules WHERE id = ?1", params![id])?;
         Ok(())
     }
 
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn ignores(&self) -> Result<Vec<(i64, String)>> {
         let conn = self.conn();
         let mut stmt = conn.prepare("SELECT id, padrao FROM ignore ORDER BY id")?;
@@ -269,14 +263,12 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn add_ignore(&self, padrao: &str) -> Result<i64> {
         let conn = self.conn();
         conn.execute("INSERT INTO ignore(padrao) VALUES(?1)", params![padrao])?;
         Ok(conn.last_insert_rowid())
     }
 
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn delete_ignore(&self, id: i64) -> Result<()> {
         self.conn()
             .execute("DELETE FROM ignore WHERE id = ?1", params![id])?;
@@ -284,7 +276,6 @@ impl Store {
     }
 
     /// Registra um alerta enviado; o resumo é cortado em 80 chars (nunca guarda mídia).
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn log_alert(&self, ts: u64, regra: &str, resumo: &str) -> Result<()> {
         let resumo: String = resumo.chars().take(80).collect();
         self.conn().execute(
@@ -295,7 +286,6 @@ impl Store {
     }
 
     /// Alertas mais recentes primeiro: (ts, regra, resumo).
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn alerts(&self, limit: usize) -> Result<Vec<(u64, String, String)>> {
         let conn = self.conn();
         let mut stmt =
@@ -307,7 +297,6 @@ impl Store {
     }
 
     /// Apaga alertas com `ts` anterior a `agora - retencao_dias`; devolve quantos.
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn purge_alerts(&self, retencao_dias: u64, agora: u64) -> Result<usize> {
         let corte = agora.saturating_sub(retencao_dias.saturating_mul(86_400));
         Ok(self
@@ -332,34 +321,28 @@ impl Store {
     }
 
     /// Janela do dedupe em minutos (padrão 30).
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn dedupe_min(&self) -> Result<u64> {
         self.get_range("dedupe_min", 30, 1440)
     }
 
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn set_dedupe_min(&self, n: u64) -> Result<()> {
         self.set_range("dedupe_min", "dedupe (min)", n, 1440)
     }
 
     /// Máximo de alertas por hora (padrão 10).
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn alertas_hora(&self) -> Result<u64> {
         self.get_range("alertas_hora", 10, 1000)
     }
 
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn set_alertas_hora(&self, n: u64) -> Result<()> {
         self.set_range("alertas_hora", "alertas por hora", n, 1000)
     }
 
     /// Retenção do histórico em dias (padrão 7).
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn retencao_dias(&self) -> Result<u64> {
         self.get_range("retencao_dias", 7, 365)
     }
 
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn set_retencao_dias(&self, n: u64) -> Result<()> {
         self.set_range("retencao_dias", "retenção (dias)", n, 365)
     }
@@ -373,18 +356,15 @@ impl Store {
     }
 
     /// Início do silêncio ("HH:MM" ou "" = desligado).
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn silencio_ini(&self) -> Result<String> {
         self.get_hhmm("silencio_ini")
     }
 
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn silencio_fim(&self) -> Result<String> {
         self.get_hhmm("silencio_fim")
     }
 
     /// Grava o intervalo de silêncio; cada ponta é vazia ou "HH:MM" válido.
-    #[allow(dead_code)] // até a Onda B ligar
     pub fn set_silencio(&self, ini: &str, fim: &str) -> Result<()> {
         for v in [ini, fim] {
             if !v.is_empty() && !hhmm_valido(v) {
@@ -481,11 +461,23 @@ mod tests {
     }
 
     #[test]
+    fn purge_usa_retencao_das_settings() {
+        let s = Store::memory().unwrap();
+        s.log_alert(1_000, "bug", "velho").unwrap();
+        s.log_alert(900_000, "bug", "novo").unwrap();
+        let n = s
+            .purge_alerts(s.retencao_dias().unwrap(), 1_000_000)
+            .unwrap(); // 7 dias = 604800 s
+        assert_eq!((n, s.alerts(10).unwrap().len()), (1, 1));
+    }
+
+    #[test]
     fn rules_crud_and_seed_once() {
         let s = Store::memory().unwrap();
         let r = s.rules().unwrap();
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].1, "bug");
+        assert_eq!(r[0].2, crate::detector::REGRA_BUG); // semente do SQL = constante testada
         assert!(r[0].3);
         let id = s.add_rule("promo", "promo").unwrap();
         s.update_rule(id, "promo2", "promo\\d").unwrap();

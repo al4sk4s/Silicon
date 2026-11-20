@@ -89,3 +89,11 @@ Settings (tabela `settings` já existente): `dedupe_min`=30, `alertas_hora`=10, 
 | 7 | Validar com WhatsApp real (T7) e plano B de mídia se precisar (T8) | — | você + dono | 6 |
 
 Paralelo: 2, 3 e 4 juntos (arquivos diferentes, sem build); depois 5 junto com 6 (`state.rs` é compartilhado: um só edita). Só o agente principal roda cargo: `fmt`, `clippy -j1 --all-targets -- -D warnings`, `test -j1 -- --include-ignored` após cada onda.
+
+## Divergências da implementação (2026-11-20)
+- Ordem dos filtros: **silêncio → dedupe → limite** (o silêncio não registra nada). Consequência: se o limite/hora barra, o dedupe já registrou a mensagem (não alerta de novo na janela).
+- Cache de participantes do `alerta` é um `static` em `monitor.rs` (não campo de `AppState`); só existe um chat `alerta`.
+- Novo evento `alerta_barrado` (silêncio/dedupe/limite), só com JID.
+- Os campos de `state.rs` (`detector`, `dedupe`, `limite`, `recarrega_detector`) foram escritos pelo agente principal, antes do T5.
+- Purge do `alert_log`: `tokio::spawn` em `main.rs` (interval de 1 h, 1º tick na partida), lê `retencao_dias` a cada tick.
+- `/alerts` mostra só HH:MM:SS (sem dia) e sem paginação (corte em 100): risco conhecido.

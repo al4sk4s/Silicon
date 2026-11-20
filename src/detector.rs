@@ -1,5 +1,3 @@
-#![allow(dead_code)] // até a Onda B ligar
-
 //! Detector de promoções/palavras (spec 003): puro, sem AppState.
 //! ATENÇÃO: o texto é normalizado (minúsculas, sem acento) antes do casamento, mas o
 //! PADRÃO não é. Quem escreve a regra deve usar minúsculas e sem acento.
@@ -7,6 +5,7 @@
 use regex::{Regex, RegexBuilder};
 use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 
+#[cfg(test)]
 pub const REGRA_BUG: &str = r"\bbug(s|ad[oa]s?|ou|ar|ando|uei|zao|zinho|ue[im])?\b";
 
 const LIMITE_REGEX: usize = 64 * 1024;
@@ -40,6 +39,7 @@ pub struct Regra {
     pub ativa: bool,
 }
 
+#[allow(dead_code)] // id só é lido nos testes; o monitor usa o nome
 pub struct RegraCasada {
     pub id: i64,
     pub nome: String,
