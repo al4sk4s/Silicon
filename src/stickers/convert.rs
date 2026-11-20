@@ -47,9 +47,7 @@ fn fix_riff(mut out: Vec<u8>) -> Option<Vec<u8>> {
 }
 
 fn filter(side: u16) -> String {
-    format!(
-        "scale={side}:{side}:force_original_aspect_ratio=increase,crop={side}:{side},pad=512:512:-1:-1:color=0x00000000,format=rgba"
-    )
+    format!("scale={side}:{side},setsar=1,pad=512:512:-1:-1:color=0x00000000,format=rgba")
 }
 
 /// Roda o ffmpeg; `stdin` só para imagem. O stderr não é capturado (nunca logamos conteúdo).

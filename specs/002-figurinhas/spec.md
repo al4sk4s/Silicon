@@ -17,13 +17,13 @@ respondendo à mensagem de origem.
 - RF1 Comandos: `/s`, `/fig`, `/figurinha` (aliases). Só em chats com papel `comando`.
 - RF2 Fonte da mídia: mensagem **citada** (`contextInfo`/`stanza_id`) ou a própria mensagem
   se o comando vier na legenda da mídia.
-- RF3 Estática: imagem → WebP 512x512 (preenche o quadrado: escala até cobrir e corta o centro; sem barras),
+- RF3 Estática: imagem → WebP 512x512 (estica para o quadrado, sem cortar nem barras; proporção distorcida),
   ≤ 100 KB (usar 100.000 bytes como teto seguro), enviada como `stickerMessage`
   (`mimetype image/webp`; preencher `width`/`height`).
 - RF4 Animada: vídeo/GIF → WebP animado, 512x512, **≤ 500 KB** (teto seguro 500.000 B),
   **≤ 10 s**, **frame ≥ 8 ms**, o **primeiro frame deve mostrar a figurinha completa**;
   `isAnimated=true`, loop infinito. Comando-base (derivado, validar no app):
-  `ffmpeg -i in -vf "fps=15,scale=512:512:force_original_aspect_ratio=increase,crop=512:512,pad=512:512:-1:-1:color=0x00000000,format=rgba" -an -t 10 -c:v libwebp -lossless 0 -q:v 60 -compression_level 6 -loop 0 out.webp`.
+  `ffmpeg -i in -vf "fps=15,scale=512:512,setsar=1,pad=512:512:-1:-1:color=0x00000000,format=rgba" -an -t 10 -c:v libwebp -lossless 0 -q:v 60 -compression_level 6 -loop 0 out.webp`.
   Se passar de 500 KB, reencoda reduzindo nesta ordem: `-q:v` (60→40→25), fps (15→12→10),
   duração, escala; no máximo N tentativas, depois responde "mídia pesada demais".
   **Medido (ffmpeg 9.0.2, vídeo de teste 8 s, pior caso):** q60 → 733 KB, q40 → 611 KB,
