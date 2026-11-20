@@ -137,6 +137,33 @@ impl Store {
         self.set("sticker_per_min", &n.to_string())
     }
 
+    /// Nome e autor gravados no EXIF das figurinhas novas (RF10); vazio é válido.
+    pub fn sticker_pack_name(&self) -> Result<String> {
+        Ok(self
+            .get("sticker_pack_name")?
+            .unwrap_or_else(|| "Silicon™".into()))
+    }
+
+    pub fn sticker_publisher(&self) -> Result<String> {
+        Ok(self
+            .get("sticker_publisher")?
+            .unwrap_or_else(|| "@al4sk4s".into()))
+    }
+
+    pub fn set_sticker_meta(&self, name: &str, publisher: &str) -> Result<()> {
+        if name.chars().count() > crate::stickers::MAX_FIELD
+            || publisher.chars().count() > crate::stickers::MAX_FIELD
+        {
+            return Err(format!(
+                "nome e autor aceitam até {} caracteres",
+                crate::stickers::MAX_FIELD
+            )
+            .into());
+        }
+        self.set("sticker_pack_name", name)?;
+        self.set("sticker_publisher", publisher)
+    }
+
     pub fn bind(&self) -> Result<String> {
         Ok(self.get("bind")?.unwrap_or_else(|| "127.0.0.1:8080".into()))
     }
@@ -175,6 +202,17 @@ mod tests {
         s.set_role("a@g.us", Role::Alerta, None).unwrap(); // mesmo JID ok
         assert!(s.set_role("b@g.us", Role::Alerta, None).is_err());
         assert_eq!(s.roles().unwrap()["a@g.us"], Role::Alerta);
+    }
+
+    #[test]
+    fn sticker_meta_defaults_and_limit() {
+        let s = Store::memory().unwrap();
+        assert_eq!(s.sticker_pack_name().unwrap(), "Silicon™");
+        assert_eq!(s.sticker_publisher().unwrap(), "@al4sk4s");
+        s.set_sticker_meta("", "x").unwrap();
+        assert_eq!(s.sticker_pack_name().unwrap(), "");
+        assert!(s.set_sticker_meta(&"a".repeat(65), "x").is_err());
+        assert_eq!(s.sticker_publisher().unwrap(), "x");
     }
 
     #[test]

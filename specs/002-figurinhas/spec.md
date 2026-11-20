@@ -91,7 +91,7 @@ para 512x512 (decisão do dono: sem corte nem barras, proporção distorcida). S
 lado a lado, rajada/"Calma…", `/s` sem citar, tempos medidos. Probe do ffmpeg: timeout subiu para 30 s (boot falhava
 com cache frio) e `/s` refaz o probe se o flag estiver falso.
 
-## Nome e autor da figurinha + `/rename` (pedido do dono, 20/11/2026; só plano, não implementado)
+## Nome e autor da figurinha + `/rename` (pedido do dono, 20/11/2026; implementado em código — falta [WA])
 - RF10 Toda figurinha gerada leva EXIF com **nome do pacote** e **autor** (o que aparece ao tocar na figurinha).
   Padrões: nome **`Silicon™`**, autor **`@al4sk4s`**. Dois campos novos em **Ajustes** do painel (`sticker_pack_name`,
   `sticker_publisher`), válidos para as figurinhas novas. Substitui o RF6 "opcional" (T11).
@@ -102,6 +102,12 @@ com cache frio) e `/s` refaz o probe se o flag estiver falso.
 - RF12 Validação do `/rename`: sem citar figurinha → "Responda uma figurinha com /rename nome / autor"; campo
   acima de 64 caracteres (valor a confirmar) → recusa curta; sem a `/` → recusa com o uso. Figurinha animada e
   estática mantêm os bytes do WebP; só o chunk `EXIF` muda.
-- Perguntas ao dono: (1) o comando é `/rename` (sem espaço)? (2) `/rename nome` sem `/` vale como só nome (autor
+- Implementado (T11/T12, respostas conservadoras, o dono pode mudar): comando `/rename` sem espaço; `/rename nome`
+  sem `/` é erro com o uso (autor não é opcional); só a 1ª `/` separa (o resto vai no autor); limite 64 caracteres
+  (também no painel); `@al4sk4s` é texto configurável no painel. `/s` e `/rename` dividem o mesmo limite por chat.
+  EXIF: TIFF LE, tag 0x5741, JSON com `sticker-pack-id` fixo `silicon`; VP8X criado se faltar. Falha no EXIF nunca
+  derruba o envio de `/s`. Risco aberto: a figurinha citada pode vir sem `media_key` (download falha) e o WhatsApp
+  pode ignorar esse EXIF (fonte só comunitária); ambos dependem do [WA].
+- Perguntas ao dono (já respondidas pelo padrão acima): (1) o comando é `/rename` (sem espaço)? (2) `/rename nome` sem `/` vale como só nome (autor
   vazio) ou é erro? (3) o EXIF novo aparece em figurinhas já enviadas? (não: só nas geradas depois). (4) o
   `@al4sk4s` do autor é texto fixo mesmo ou o nome do dono configurado?

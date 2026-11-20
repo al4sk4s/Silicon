@@ -51,11 +51,11 @@ aceita sem EXIF; **viewOnce: a citação traz `media_key` e o dispositivo vincul
 (risco maior: fazer **primeiro**, antes de polir); GIF do app vem com faststart; tempos.
 Depende: T8.
 
-**T11. EXIF: nome e autor** · módulo — `src/stickers/exif.rs` (chunk `EXIF`), campos
+**T11. [x] EXIF: nome e autor (código pronto; [WA] pendente)** · módulo — `src/stickers/exif.rs` (chunk `EXIF`), campos
 `sticker_pack_name`=`Silicon™` e `sticker_publisher`=`@al4sk4s` em Ajustes (RF10); teste de `with_exif` e do
 painel; [WA] conferir ao tocar na figurinha. Depende: T10.
 
-**T12. `/rename`** · comando — `parse_rename` + handler (RF11/RF12): cita figurinha, troca nome/autor,
+**T12. [x] `/rename` (código pronto; [WA] pendente)** · comando — `parse_rename` + handler (RF11/RF12): cita figurinha, troca nome/autor,
 `/rename /` limpa. Teste do parser; [WA] real. Depende: T11.
 
 ## Paralelismo

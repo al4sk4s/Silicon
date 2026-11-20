@@ -1,6 +1,7 @@
 //! Comandos de figurinha (spec 002). Só responde a comando; nunca inicia conversa (P1).
 pub mod check;
 pub mod convert;
+pub mod exif;
 pub mod limit;
 pub mod memfd;
 
@@ -12,6 +13,28 @@ pub fn parse_cmd(text: &str) -> bool {
     ["/s", "/fig", "/figurinha"]
         .iter()
         .any(|c| first.eq_ignore_ascii_case(c))
+}
+
+/// Tamanho máximo (em caracteres) de nome e autor.
+pub const MAX_FIELD: usize = 64;
+const RENAME_USO: &str = "Responda uma figurinha com /rename nome / autor";
+
+/// `/rename nome / autor`. None se não for o comando; Err(resposta curta) se estiver mal formado.
+/// `/rename /` zera os dois. Sem `/` é erro (o autor não é opcional); só a 1ª `/` separa.
+pub fn parse_rename(text: &str) -> Option<Result<(String, String), &'static str>> {
+    let t = text.trim();
+    let (first, rest) = t.split_once(char::is_whitespace).unwrap_or((t, ""));
+    if !first.eq_ignore_ascii_case("/rename") {
+        return None;
+    }
+    let Some((name, publisher)) = rest.split_once('/') else {
+        return Some(Err(RENAME_USO));
+    };
+    let (name, publisher) = (name.trim(), publisher.trim());
+    if name.chars().count() > MAX_FIELD || publisher.chars().count() > MAX_FIELD {
+        return Some(Err("Nome e autor aceitam até 64 caracteres"));
+    }
+    Some(Ok((name.to_string(), publisher.to_string())))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,23 +95,37 @@ pub async fn make(kind: Kind, bytes: &[u8]) -> Result<Vec<u8>, &'static str> {
     })
 }
 
+async fn reply(ctx: &MessageContext, sent: &crate::wa::Sent, t: &str) {
+    if let Ok(r) = ctx.reply_quoting(t).await {
+        sent.add(r.message_id.as_str());
+    }
+}
+
+/// Limite por chat (`/s` e `/rename` dividem o balde). false = já respondeu ou calou.
+async fn allowed(
+    ctx: &MessageContext,
+    st: &crate::state::AppState,
+    sent: &crate::wa::Sent,
+    chat: &str,
+) -> bool {
+    let max = st.store.sticker_per_min().unwrap_or(3);
+    match st.sticker_limit.check(chat, std::time::Instant::now(), max) {
+        limit::Verdict::Allow => true,
+        limit::Verdict::DenyFirst => {
+            reply(ctx, sent, "Calma, muitas figurinhas agora").await;
+            false
+        }
+        limit::Verdict::DenySilent => false,
+    }
+}
+
 /// Trata `/s`: limite -> ffmpeg -> fonte -> viewOnce -> download -> converte -> envia.
 /// Falha vira resposta curta citando o comando. Log só com tipo e resultado (P4/P6).
 pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &crate::wa::Sent) {
     let chat = ctx.info.source.chat.to_string();
-    let reply = |t: &'static str| async move {
-        if let Ok(r) = ctx.reply_quoting(t).await {
-            sent.add(r.message_id.as_str());
-        }
-    };
-    let max = st.store.sticker_per_min().unwrap_or(3);
-    match st
-        .sticker_limit
-        .check(&chat, std::time::Instant::now(), max)
-    {
-        limit::Verdict::Allow => {}
-        limit::Verdict::DenyFirst => return reply("Calma, muitas figurinhas agora").await,
-        limit::Verdict::DenySilent => return,
+    let reply = |t: &'static str| reply(ctx, sent, t);
+    if !allowed(ctx, st, sent, &chat).await {
+        return;
     }
     // o probe do boot falhou sem causa achada (intermitente); tenta de novo antes de desistir
     if !check::ffmpeg_ok() {
@@ -136,6 +173,71 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
         }
     };
     drop(bytes); // viewOnce: a mídia original some da memória aqui
+    // EXIF (nome/autor) é enfeite: se falhar, vai o WebP sem ele.
+    let (name, publisher) = (
+        st.store.sticker_pack_name().unwrap_or_default(),
+        st.store.sticker_publisher().unwrap_or_default(),
+    );
+    let webp = exif::with_exif(&webp, &name, &publisher).unwrap_or_else(|e| {
+        tracing::warn!("EXIF não aplicado: {e}");
+        webp
+    });
+    send_webp(ctx, st, sent, &chat, webp).await;
+}
+
+/// `/rename nome / autor` citando uma figurinha: baixa, troca o EXIF e reenvia (RF11/RF12).
+pub async fn handle_rename(
+    ctx: &MessageContext,
+    st: &crate::state::AppState,
+    sent: &crate::wa::Sent,
+    args: Result<(String, String), &'static str>,
+) {
+    let chat = ctx.info.source.chat.to_string();
+    let (name, publisher) = match args {
+        Ok(a) => a,
+        Err(m) => return reply(ctx, sent, m).await,
+    };
+    let quoted = ctx
+        .message
+        .context_info()
+        .and_then(|c| c.quoted_message.as_option())
+        .map(|q| q.get_base_message());
+    let Some(stk) = quoted.and_then(|q| q.sticker_message.as_option()) else {
+        return reply(ctx, sent, RENAME_USO).await;
+    };
+    if !allowed(ctx, st, sent, &chat).await {
+        return;
+    }
+    use whatsapp_rust::download::DownloadLimits;
+    const MAX_STK: u64 = 2 * 1024 * 1024;
+    if stk.file_length.is_some_and(|n| n > MAX_STK) {
+        return reply(ctx, sent, "Mídia pesada demais").await;
+    }
+    let limits = DownloadLimits::new(MAX_STK + 65_536, MAX_STK);
+    let bytes = match ctx.client.download(stk, limits).await {
+        Ok(b) => b,
+        Err(e) => {
+            // se a citação vier sem media_key (como o viewOnce), cai aqui: ver spec
+            tracing::warn!("download da figurinha citada falhou: {e}");
+            st.push_event("figurinha_erro_download", &chat);
+            return reply(ctx, sent, "Não consegui baixar").await;
+        }
+    };
+    match exif::with_exif(&bytes, &name, &publisher) {
+        Ok(w) => send_webp(ctx, st, sent, &chat, w).await,
+        Err(_) => reply(ctx, sent, "Figurinha não suportada").await,
+    }
+}
+
+/// Sobe o WebP e responde com a figurinha citando o comando.
+async fn send_webp(
+    ctx: &MessageContext,
+    st: &crate::state::AppState,
+    sent: &crate::wa::Sent,
+    chat: &str,
+    webp: Vec<u8>,
+) {
+    let reply = |t: &'static str| reply(ctx, sent, t);
     let animated = whatsapp_rust::webp::is_animated(&webp);
     let up = match ctx
         .client
@@ -148,7 +250,7 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
     {
         Ok(u) => u,
         Err(_) => {
-            st.push_event("figurinha_erro_upload", &chat);
+            st.push_event("figurinha_erro_upload", chat);
             return reply("Não consegui enviar").await;
         }
     };
@@ -171,9 +273,9 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
         Ok(r) => {
             sent.add(r.message_id.as_str());
             let kind = if animated { "animada" } else { "estatica" };
-            st.push_event(&format!("figurinha_{kind}"), &chat);
+            st.push_event(&format!("figurinha_{kind}"), chat);
         }
-        Err(_) => st.push_event("erro_envio", &chat),
+        Err(_) => st.push_event("erro_envio", chat),
     }
 }
 
@@ -274,6 +376,28 @@ mod tests {
         }
         for no in ["", "s", "/sx", "/figura", "/stickers", "oi /s", "/s/fig"] {
             assert!(!parse_cmd(no), "{no}");
+        }
+    }
+
+    #[test]
+    fn parse_rename_cases() {
+        let ok = |t: &str| parse_rename(t).unwrap().unwrap();
+        assert_eq!(
+            ok("/rename Meu pack / Eu"),
+            ("Meu pack".into(), "Eu".into())
+        );
+        assert_eq!(ok("/RENAME a/b"), ("a".into(), "b".into()));
+        assert_eq!(ok("/rename /"), ("".into(), "".into()));
+        assert_eq!(ok("/rename  / só autor"), ("".into(), "só autor".into()));
+        assert_eq!(ok("/rename a / b / c"), ("a".into(), "b / c".into()));
+        assert!(parse_rename("/rename só nome").unwrap().is_err());
+        assert!(parse_rename("/rename").unwrap().is_err());
+        let longo = format!("/rename {} / x", "a".repeat(65));
+        assert!(parse_rename(&longo).unwrap().is_err());
+        let limite = format!("/rename {} / x", "a".repeat(64));
+        assert!(parse_rename(&limite).unwrap().is_ok());
+        for no in ["", "/renamex a/b", "/s", "oi /rename a/b"] {
+            assert!(parse_rename(no).is_none(), "{no}");
         }
     }
 

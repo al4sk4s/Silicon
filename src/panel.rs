@@ -317,6 +317,8 @@ fn settings_page(st: &AppState, msg: &str) -> String {
     let max = st.store.delay_max_ms().unwrap_or(2000);
     let owner = st.store.owner_jid().ok().flatten().unwrap_or_default();
     let per_min = st.store.sticker_per_min().unwrap_or(3);
+    let pack = st.store.sticker_pack_name().unwrap_or_default();
+    let publisher = st.store.sticker_publisher().unwrap_or_default();
     page(
         "Ajustes",
         &format!(
@@ -325,9 +327,13 @@ fn settings_page(st: &AppState, msg: &str) -> String {
              atraso máx (ms): <input name=\"delay_max_ms\" value=\"{max}\"><br>\
              JID do dono (opcional): <input name=\"owner_jid\" value=\"{}\"><br>\
              figurinhas por minuto (1-30): <input type=\"number\" min=\"1\" max=\"30\" name=\"sticker_per_min\" value=\"{per_min}\"><br>\
+             nome da figurinha (até 64): <input name=\"sticker_pack_name\" value=\"{}\"><br>\
+             autor da figurinha (até 64): <input name=\"sticker_publisher\" value=\"{}\"><br>\
              <button>Salvar</button></form>",
             esc(msg),
-            esc(&owner)
+            esc(&owner),
+            esc(&pack),
+            esc(&publisher)
         ),
     )
 }
@@ -370,9 +376,12 @@ async fn settings_post(State(st): S, Form(f): Fields) -> Response {
             .into_response();
     };
     let owner = f.get("owner_jid").map_or("", |s| s.trim());
+    let field = |k: &str| f.get(k).map_or("", |s| s.trim()).to_string();
+    let (pack, publisher) = (field("sticker_pack_name"), field("sticker_publisher"));
     let res = st
         .store
-        .set_sticker_per_min(per_min)
+        .set_sticker_meta(&pack, &publisher)
+        .and_then(|_| st.store.set_sticker_per_min(per_min))
         .and_then(|_| st.store.set("delay_min_ms", &min.to_string()))
         .and_then(|_| st.store.set("delay_max_ms", &max.to_string()))
         .and_then(|_| st.store.set("owner_jid", owner));
@@ -521,7 +530,9 @@ mod tests {
             .clone()
             .oneshot(post(
                 "/settings",
-                &format!("{base}&sticker_per_min=7"),
+                &format!(
+                    "{base}&sticker_per_min=7&sticker_pack_name=Meu+pacote&sticker_publisher=Eu"
+                ),
                 None,
                 Some(&tok),
             ))
@@ -529,6 +540,8 @@ mod tests {
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
         assert_eq!(st.store.sticker_per_min().unwrap(), 7);
+        assert_eq!(st.store.sticker_pack_name().unwrap(), "Meu pacote");
+        assert_eq!(st.store.sticker_publisher().unwrap(), "Eu");
         // limite fora de 1..=30 é recusado sem alterar
         let r = app
             .clone()
