@@ -27,6 +27,7 @@ terminal. Quer-se um visual limpo (tons de cinza, botões simples) e o pareament
 - RF5 Painel segue só LAN com senha (P5); nada novo escuta na rede.
 - RF6 Chats: o botão "liberar" usa o mesmo `set_role`/`clear_role`; `alerta` continua único.
 - RF7 Primeiro acesso: sem senha gravada, `/login` mostra "escolha a senha" (duas caixas). Só aceita de loopback; grava o hash e já loga. O `set-password` continua valendo.
+- RF8 `/chats` recarrega sozinho a cada 5 s (via GET), só com a busca vazia e sem campo em foco, para refletir `/c allow|deny`.
 
 ## Fora do escopo
 Tema escuro, i18n, edição de configurações além do que já existe, desparear pelo painel.
