@@ -485,7 +485,7 @@ fn pair_page(st: &AppState, msg: &str) -> String {
              <small>Só dígitos: DDI 55 + DDD + número, sem +, espaço ou traço. Ex.: <code>5511999998888</code>. Vazio = QR.</small><br><br>\
              <button name=\"action\" value=\"save\">Salvar e reiniciar pareamento</button> \
              <button class=\"off\" name=\"action\" value=\"retry\">Tentar de novo</button></form>\
-             <script>setInterval(async()=>{{try{{s.innerHTML=await (await fetch('/pair/state')).text()}}catch(e){{}}}},2000)</script>",
+             <script>setInterval(async()=>{{try{{const r=await fetch('/pair/state');if(r.redirected){{location.reload();return}}s.innerHTML=await r.text()}}catch(e){{}}}},2000)</script>",
             esc(msg),
             pair_fragment(st),
             esc(&phone)
@@ -769,6 +769,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::SEE_OTHER);
+        // o JS da página detecta este redirect (fetch.redirected) e recarrega
+        assert_eq!(r.headers()[header::LOCATION], "/login");
         let tok = st.sessions.create();
         let r = app
             .clone()
