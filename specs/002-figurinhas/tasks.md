@@ -33,13 +33,13 @@ fecha após `wait`. Teste: o fd some após o uso; nada novo no disco. Depende: T
 **Build 1** (integração): fmt + clippy + test `-j1` após T1–T5, T7.
 
 ## Onda B — integração
-**T8. `handle`** · integração — rate limit → checagem `viewonce_enabled` (antes do download) →
+**T8. [x] `handle`** · integração — rate limit → checagem `viewonce_enabled` (antes do download) →
 `client.download` em memória (10 MB img / 32 MB vídeo) → convert (vídeo viewOnce via memfd) →
 `client.upload(MediaType::Sticker)` → `StickerMessage` (mimetype, 512x512, `is_animated`,
 quote) → `ctx.send_message`. Gancho no ramo `Command` do dispatch. Mensagens curtas de erro.
 Depende: T1–T6, T7.
 
-**T9. Teste de zero persistência** · módulo — `tests/viewonce_nopersist.rs`: lista recursiva
+**T9. [x] Teste de zero persistência** · módulo — `tests/viewonce_nopersist.rs`: lista recursiva
 de `data_dir`, `temp_dir()` e `/dev/shm` antes/depois de `handle_bytes(view_once = true)`
 (imagem e vídeo); log sem bytes. Depende: T7, T8.
 

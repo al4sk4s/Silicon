@@ -122,7 +122,6 @@ impl Store {
     }
 
     // padrão desligado (P6): só "1" liga
-    #[allow(dead_code)] // usado pelo handle (T8)
     pub fn viewonce_enabled(&self) -> Result<bool> {
         Ok(self.get("viewonce_enabled")?.as_deref() == Some("1"))
     }
@@ -132,7 +131,6 @@ impl Store {
     }
 
     // fora de 1..=30 ou lixo no banco cai no padrão 3
-    #[allow(dead_code)] // usado pelo handle (T8)
     pub fn sticker_per_min(&self) -> Result<usize> {
         Ok(self
             .get("sticker_per_min")?

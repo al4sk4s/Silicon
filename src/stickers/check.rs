@@ -29,7 +29,6 @@ pub async fn probe() {
     }
 }
 
-#[allow(dead_code)] // usado pelo handle (T8)
 pub fn ffmpeg_ok() -> bool {
     FFMPEG_OK.load(Ordering::Relaxed)
 }

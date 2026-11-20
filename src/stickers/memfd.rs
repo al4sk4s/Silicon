@@ -4,12 +4,10 @@ use std::io::{self, Seek, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 
 /// Fd anônimo (sem caminho no disco). Fecha no `Drop`.
-#[allow(dead_code)] // usado pelo convert/handle
 pub struct MemFile {
     file: File, // dono do fd; fecha no Drop
 }
 
-#[allow(dead_code)] // usado pelo convert/handle
 impl MemFile {
     /// Cria o memfd SEM `MFD_CLOEXEC` (o ffmpeg filho precisa herdar), grava `bytes` e
     /// volta o offset para 0.

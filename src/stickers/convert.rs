@@ -5,7 +5,6 @@ use tokio::{
 };
 
 #[derive(Debug, PartialEq, Eq)]
-#[allow(dead_code)] // usado pelo handle (T8)
 pub enum ConvErr {
     /// Escada esgotada ou timeout: "Mídia pesada demais".
     TooBig,
@@ -95,7 +94,6 @@ async fn run(args: Vec<String>, stdin: Option<&[u8]>, secs: u64) -> Result<Vec<u
 }
 
 /// Imagem (PNG/JPEG/WebP...) -> WebP 512x512 estático, <= 100.000 B.
-#[allow(dead_code)] // usado pelo handle (T8)
 pub async fn to_static(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
     let _g = SEM.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
     for q in [75, 50, 30] {
@@ -122,7 +120,6 @@ pub async fn to_static(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
 }
 
 /// Vídeo/GIF -> WebP animado 512x512, <= 500.000 B. Entrada sempre por `memfd::MemFile`.
-#[allow(dead_code)] // usado pelo handle (T8)
 pub async fn to_animated(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
     let _g = SEM.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
     // Vivo até o fim: o ffmpeg lê de /proc/self/fd/N (moov no fim não importa).

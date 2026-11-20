@@ -28,6 +28,8 @@ pub struct AppState {
     pub roles: ChatRoles,
     pub sessions: Sessions,
     pub limiter: RateLimiter,
+    /// Limite de figurinhas por chat (spec 002).
+    pub sticker_limit: crate::stickers::limit::Limiter,
     pub status: Mutex<Status>,
     pub events: Mutex<VecDeque<Event>>,
     /// Grupos (jid, assunto) vindos de `list_participating`; só rótulo (RF12).
@@ -52,6 +54,7 @@ impl AppState {
             roles,
             sessions: Sessions::new(std::time::Duration::from_secs(12 * 3600)),
             limiter: RateLimiter::new(),
+            sticker_limit: Default::default(),
             status: Mutex::default(),
             events: Mutex::default(),
             groups: Mutex::default(),

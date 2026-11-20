@@ -6,7 +6,6 @@ use std::time::{Duration, Instant};
 
 const WINDOW: Duration = Duration::from_secs(60);
 
-#[allow(dead_code)] // usado pelo handle (T8)
 #[derive(Debug, PartialEq, Eq)]
 pub enum Verdict {
     Allow,
@@ -17,12 +16,10 @@ pub enum Verdict {
 }
 
 /// Por chat: instantes dos pedidos aceitos na janela + se o aviso "Calma" já foi dado.
-#[allow(dead_code)] // usado pelo handle (T8)
 #[derive(Default)]
 pub struct Limiter(Mutex<HashMap<String, (VecDeque<Instant>, bool)>>);
 
 impl Limiter {
-    #[allow(dead_code)] // usado pelo handle (T8)
     pub fn check(&self, chat: &str, now: Instant, max_per_min: usize) -> Verdict {
         let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let (queue, warned) = map.entry(chat.to_string()).or_default();

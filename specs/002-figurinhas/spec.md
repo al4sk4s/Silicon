@@ -49,8 +49,8 @@ respondendo à mensagem de origem.
 - Conversão estática < 1 s; animada < 10 s no servidor.
 - Temporários só em `tmpfs`/memória quando possível; se usar disco para o ffmpeg, arquivo
   apagado no fim, mesmo em erro, e nunca para viewOnce (viewOnce passa por pipe/stdin).
-- Dependência de sistema: `ffmpeg` com `libwebp` (precisa checar no PC servidor; não está
-  instalado no notebook de dev).
+- Dependência de sistema: `ffmpeg` com `libwebp_anim` (instalado no notebook de dev; **servidor
+  ainda não conferido**). O bot checa no boot; ausente → o comando responde "ffmpeg ausente".
 
 ## Fora do escopo
 Pacotes de figurinha, edição de figurinha (texto/recorte), converter figurinha em imagem.
@@ -62,10 +62,10 @@ Pacotes de figurinha, edição de figurinha (texto/recorte), converter figurinha
 - Com `viewonce_enabled=false`, o comando em viewOnce responde "desativado".
 - Chat sem papel `comando` é ignorado.
 
-## Decisões a confirmar
-1. ffmpeg para animadas via pipe (`stdin`→`stdout`) para viewOnce nunca tocar disco.
-2. Para viewOnce de **vídeo**, o mesmo vale (pipe). Se o ffmpeg exigir arquivo, a animada de
-   viewOnce fica de fora do MVP.
+## Decisões (resolvidas)
+1. Imagem: ffmpeg por pipe (stdin→stdout). **Todo vídeo/GIF** (viewOnce ou não): `memfd`
+   (RAM, `/proc/self/fd/N`); sem `/dev/shm` nem arquivo temporário. Substitui o fallback do plano.
+2. Comando na legenda da mídia vale (RF2); o `/s` também é lido da legenda no `wa.rs`.
 
 ## Perguntas em aberto
 - Encoder WebP do crate `image` é lossy? Senão usar `webp`/`ffmpeg` também para estáticas.
