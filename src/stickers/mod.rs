@@ -96,9 +96,9 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
     let Ok(src) = pick_source(&ctx.message) else {
         return reply("Responda uma imagem ou vídeo com /s").await;
     };
-    // Antes de baixar qualquer byte (P6).
-    if src.view_once && !st.store.viewonce_enabled().unwrap_or(false) {
-        return reply("Visualização única desativada").await;
+    // Não suportado: a citação vem sem media_key (T10); nem tenta baixar.
+    if src.view_once {
+        return reply("Visualização única não é suportada").await;
     }
     use whatsapp_rust::download::{DownloadLimits, Downloadable};
     let (max_plain, file_len, dl): (u64, Option<u64>, &dyn Downloadable) = match src.kind {

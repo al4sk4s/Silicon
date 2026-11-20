@@ -17,13 +17,13 @@ respondendo à mensagem de origem.
 - RF1 Comandos: `/s`, `/fig`, `/figurinha` (aliases). Só em chats com papel `comando`.
 - RF2 Fonte da mídia: mensagem **citada** (`contextInfo`/`stanza_id`) ou a própria mensagem
   se o comando vier na legenda da mídia.
-- RF3 Estática: imagem → WebP 512x512 (proporção preservada, fundo transparente),
+- RF3 Estática: imagem → WebP 512x512 (preenche o quadrado: escala até cobrir e corta o centro; sem barras),
   ≤ 100 KB (usar 100.000 bytes como teto seguro), enviada como `stickerMessage`
   (`mimetype image/webp`; preencher `width`/`height`).
 - RF4 Animada: vídeo/GIF → WebP animado, 512x512, **≤ 500 KB** (teto seguro 500.000 B),
   **≤ 10 s**, **frame ≥ 8 ms**, o **primeiro frame deve mostrar a figurinha completa**;
   `isAnimated=true`, loop infinito. Comando-base (derivado, validar no app):
-  `ffmpeg -i in -vf "fps=15,scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:-1:-1:color=0x00000000,format=rgba" -an -t 10 -c:v libwebp -lossless 0 -q:v 60 -compression_level 6 -loop 0 out.webp`.
+  `ffmpeg -i in -vf "fps=15,scale=512:512:force_original_aspect_ratio=increase,crop=512:512,pad=512:512:-1:-1:color=0x00000000,format=rgba" -an -t 10 -c:v libwebp -lossless 0 -q:v 60 -compression_level 6 -loop 0 out.webp`.
   Se passar de 500 KB, reencoda reduzindo nesta ordem: `-q:v` (60→40→25), fps (15→12→10),
   duração, escala; no máximo N tentativas, depois responde "mídia pesada demais".
   **Medido (ffmpeg 9.0.2, vídeo de teste 8 s, pior caso):** q60 → 733 KB, q40 → 611 KB,
@@ -31,7 +31,7 @@ respondendo à mensagem de origem.
   basta; a escada precisa mexer também em fps/duração/escala; usar `-compression_level`
   menor (≈ 3) e **timeout por tentativa** para não travar o daemon; encode animado leva
   segundos, então roda em `spawn_blocking`/processo filho, nunca no loop de eventos.
-- RF5 **Visualização única**: desembrulhar o wrapper (`get_base_message`), baixar e
+- RF5 **[DEPRECADO 19/11/2026 — não suportado]** Visualização única (a citação chega sem `media_key`; ver achado do T10). O bot responde "Visualização única não é suportada" e não baixa. Texto original: desembrulhar o wrapper (`get_base_message`), baixar e
   converter **somente em memória**. Proibido gravar a mídia original em disco, cache, log
   ou painel. Descartada assim que a figurinha é enviada **ou** a operação falha.
 - RF6 Pacote/autor da figurinha configurável no painel via EXIF no WebP (chaves da
@@ -42,7 +42,7 @@ respondendo à mensagem de origem.
 - RF7 Falhas (mídia grande, formato inválido, ffmpeg ausente) respondem com mensagem curta;
   nunca travam o daemon; nunca deixam arquivo temporário (apagado em `Drop`/sempre).
 - RF8 Limite de uso por chat (ex.: N figurinhas/minuto, configurável) contra rajada (P8).
-- RF9 Opção **`viewonce_enabled`**, **desligada por padrão**, ligada no painel. Ao ligar, o
+- RF9 **[REMOVIDO 19/11/2026]** (opção e painel retirados com o RF5). Texto original: opção **`viewonce_enabled`**, **desligada por padrão**, ligada no painel. Ao ligar, o
   painel mostra aviso para avisar o grupo antes (P6).
 
 ## Não funcionais

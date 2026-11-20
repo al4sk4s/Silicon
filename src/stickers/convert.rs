@@ -48,7 +48,7 @@ fn fix_riff(mut out: Vec<u8>) -> Option<Vec<u8>> {
 
 fn filter(side: u16) -> String {
     format!(
-        "scale={side}:{side}:force_original_aspect_ratio=decrease,pad=512:512:-1:-1:color=0x00000000,format=rgba"
+        "scale={side}:{side}:force_original_aspect_ratio=increase,crop={side}:{side},pad=512:512:-1:-1:color=0x00000000,format=rgba"
     )
 }
 

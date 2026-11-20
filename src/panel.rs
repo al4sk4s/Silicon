@@ -316,11 +316,6 @@ fn settings_page(st: &AppState, msg: &str) -> String {
     let min = st.store.delay_min_ms().unwrap_or(1000);
     let max = st.store.delay_max_ms().unwrap_or(2000);
     let owner = st.store.owner_jid().ok().flatten().unwrap_or_default();
-    let vo = if st.store.viewonce_enabled().unwrap_or(false) {
-        " checked"
-    } else {
-        ""
-    };
     let per_min = st.store.sticker_per_min().unwrap_or(3);
     page(
         "Ajustes",
@@ -329,16 +324,10 @@ fn settings_page(st: &AppState, msg: &str) -> String {
              atraso mín (ms): <input name=\"delay_min_ms\" value=\"{min}\"><br>\
              atraso máx (ms): <input name=\"delay_max_ms\" value=\"{max}\"><br>\
              JID do dono (opcional): <input name=\"owner_jid\" value=\"{}\"><br>\
-             <label><input type=\"checkbox\" name=\"viewonce_enabled\" value=\"1\"{vo}> \
-             Figurinha de visualização única</label><br>\
-             <strong>{}</strong><br>\
              figurinhas por minuto (1-30): <input type=\"number\" min=\"1\" max=\"30\" name=\"sticker_per_min\" value=\"{per_min}\"><br>\
              <button>Salvar</button></form>",
             esc(msg),
-            esc(&owner),
-            esc(
-                "Avise o grupo antes de ligar: o bot baixa e converte mídia de visualização única (P6)"
-            )
+            esc(&owner)
         ),
     )
 }
@@ -380,13 +369,10 @@ async fn settings_post(State(st): S, Form(f): Fields) -> Response {
         )
             .into_response();
     };
-    // checkbox desmarcado não é enviado
-    let viewonce = f.get("viewonce_enabled").is_some_and(|v| v == "1");
     let owner = f.get("owner_jid").map_or("", |s| s.trim());
     let res = st
         .store
-        .set_viewonce_enabled(viewonce)
-        .and_then(|_| st.store.set_sticker_per_min(per_min))
+        .set_sticker_per_min(per_min)
         .and_then(|_| st.store.set("delay_min_ms", &min.to_string()))
         .and_then(|_| st.store.set("delay_max_ms", &max.to_string()))
         .and_then(|_| st.store.set("owner_jid", owner));
@@ -535,16 +521,15 @@ mod tests {
             .clone()
             .oneshot(post(
                 "/settings",
-                &format!("{base}&viewonce_enabled=1&sticker_per_min=7"),
+                &format!("{base}&sticker_per_min=7"),
                 None,
                 Some(&tok),
             ))
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
-        assert!(st.store.viewonce_enabled().unwrap());
         assert_eq!(st.store.sticker_per_min().unwrap(), 7);
-        // checkbox ausente desliga; limite fora de 1..=30 é recusado sem alterar
+        // limite fora de 1..=30 é recusado sem alterar
         let r = app
             .clone()
             .oneshot(post(
@@ -556,7 +541,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::BAD_REQUEST);
-        assert!(st.store.viewonce_enabled().unwrap());
         let r = app
             .oneshot(post(
                 "/settings",
@@ -567,7 +551,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
-        assert!(!st.store.viewonce_enabled().unwrap());
     }
 
     #[test]

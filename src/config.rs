@@ -121,15 +121,6 @@ impl Store {
         self.get_u64("delay_max_ms", 2000)
     }
 
-    // padrão desligado (P6): só "1" liga
-    pub fn viewonce_enabled(&self) -> Result<bool> {
-        Ok(self.get("viewonce_enabled")?.as_deref() == Some("1"))
-    }
-
-    pub fn set_viewonce_enabled(&self, on: bool) -> Result<()> {
-        self.set("viewonce_enabled", if on { "1" } else { "0" })
-    }
-
     // fora de 1..=30 ou lixo no banco cai no padrão 3
     pub fn sticker_per_min(&self) -> Result<usize> {
         Ok(self
@@ -208,14 +199,9 @@ mod tests {
     #[test]
     fn sticker_settings() {
         let s = Store::memory().unwrap();
-        assert!(!s.viewonce_enabled().unwrap());
         assert_eq!(s.sticker_per_min().unwrap(), 3);
-        s.set_viewonce_enabled(true).unwrap();
         s.set_sticker_per_min(30).unwrap();
-        assert!(s.viewonce_enabled().unwrap());
         assert_eq!(s.sticker_per_min().unwrap(), 30);
-        s.set_viewonce_enabled(false).unwrap();
-        assert!(!s.viewonce_enabled().unwrap());
         assert!(s.set_sticker_per_min(0).is_err());
         assert!(s.set_sticker_per_min(31).is_err());
         assert_eq!(s.sticker_per_min().unwrap(), 30);
