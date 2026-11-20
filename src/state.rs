@@ -23,7 +23,24 @@ pub struct Status {
     pub number: Option<String>,
 }
 
+/// Pareamento em andamento (spec 005). Só memória: QR e código são credenciais temporárias.
+#[derive(Default)]
+pub struct Pairing {
+    pub qr: Option<String>,
+    /// Validade do QR atual (s) e quando chegou (unix s).
+    pub ttl: u64,
+    pub at: u64,
+    pub code: Option<String>,
+    /// Número (só dígitos) para pedir pair code em vez de QR.
+    pub phone: Option<String>,
+    /// A lib parou de emitir QRs; só "tentar de novo" resolve.
+    pub exhausted: bool,
+}
+
 pub struct AppState {
+    pub pairing: Mutex<Pairing>,
+    /// Painel pede para refazer a sessão de pareamento.
+    pub restart: tokio::sync::Notify,
     pub store: Store,
     pub roles: ChatRoles,
     pub sessions: Sessions,
@@ -73,7 +90,7 @@ impl tracing_subscriber::fmt::time::FormatTime for LocalClock {
     }
 }
 
-fn now() -> u64 {
+pub fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -88,12 +105,18 @@ impl AppState {
             sessions: Sessions::new(std::time::Duration::from_secs(12 * 3600)),
             limiter: RateLimiter::new(),
             sticker_limit: Default::default(),
+            pairing: Mutex::default(),
+            restart: Default::default(),
             status: Mutex::default(),
             events: Mutex::default(),
             groups: Mutex::default(),
             recent: Mutex::default(),
             https,
         }
+    }
+
+    pub fn lock_pairing(&self) -> std::sync::MutexGuard<'_, Pairing> {
+        self.pairing.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     pub fn push_event(&self, kind: &str, jid: &str) {
