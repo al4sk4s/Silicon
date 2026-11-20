@@ -1,6 +1,6 @@
 # Spec 002 — Figurinhas (estática, animada, visualização única)
 
-Status: **rascunho para alinhar** · Depende de: 001
+Status: **aprovada pelo dono em 2026-11-19** · Depende de: 001
 
 ## Por quê
 Caso de uso principal: transformar mídia de um chat em figurinha com um comando,

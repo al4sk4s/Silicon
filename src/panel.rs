@@ -316,15 +316,29 @@ fn settings_page(st: &AppState, msg: &str) -> String {
     let min = st.store.delay_min_ms().unwrap_or(1000);
     let max = st.store.delay_max_ms().unwrap_or(2000);
     let owner = st.store.owner_jid().ok().flatten().unwrap_or_default();
+    let vo = if st.store.viewonce_enabled().unwrap_or(false) {
+        " checked"
+    } else {
+        ""
+    };
+    let per_min = st.store.sticker_per_min().unwrap_or(3);
     page(
         "Ajustes",
         &format!(
             "<p>{}</p><form method=\"post\" action=\"/settings\">\
              atraso mín (ms): <input name=\"delay_min_ms\" value=\"{min}\"><br>\
              atraso máx (ms): <input name=\"delay_max_ms\" value=\"{max}\"><br>\
-             JID do dono (opcional): <input name=\"owner_jid\" value=\"{}\"><br><button>Salvar</button></form>",
+             JID do dono (opcional): <input name=\"owner_jid\" value=\"{}\"><br>\
+             <label><input type=\"checkbox\" name=\"viewonce_enabled\" value=\"1\"{vo}> \
+             Figurinha de visualização única</label><br>\
+             <strong>{}</strong><br>\
+             figurinhas por minuto (1-30): <input type=\"number\" min=\"1\" max=\"30\" name=\"sticker_per_min\" value=\"{per_min}\"><br>\
+             <button>Salvar</button></form>",
             esc(msg),
-            esc(&owner)
+            esc(&owner),
+            esc(
+                "Avise o grupo antes de ligar: o bot baixa e converte mídia de visualização única (P6)"
+            )
         ),
     )
 }
@@ -352,10 +366,28 @@ async fn settings_post(State(st): S, Form(f): Fields) -> Response {
         )
             .into_response();
     }
+    let Some(per_min) = f
+        .get("sticker_per_min")
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| (1..=30).contains(n))
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Html(settings_page(
+                &st,
+                "Figurinhas por minuto deve ser um inteiro de 1 a 30.",
+            )),
+        )
+            .into_response();
+    };
+    // checkbox desmarcado não é enviado
+    let viewonce = f.get("viewonce_enabled").is_some_and(|v| v == "1");
     let owner = f.get("owner_jid").map_or("", |s| s.trim());
     let res = st
         .store
-        .set("delay_min_ms", &min.to_string())
+        .set_viewonce_enabled(viewonce)
+        .and_then(|_| st.store.set_sticker_per_min(per_min))
+        .and_then(|_| st.store.set("delay_min_ms", &min.to_string()))
         .and_then(|_| st.store.set("delay_max_ms", &max.to_string()))
         .and_then(|_| st.store.set("owner_jid", owner));
     match res {
@@ -492,6 +524,50 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn settings_post_saves_sticker_options() {
+        let (app, st) = app();
+        let tok = st.sessions.create();
+        let base = "delay_min_ms=1000&delay_max_ms=2000&owner_jid=";
+        let r = app
+            .clone()
+            .oneshot(post(
+                "/settings",
+                &format!("{base}&viewonce_enabled=1&sticker_per_min=7"),
+                None,
+                Some(&tok),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(st.store.viewonce_enabled().unwrap());
+        assert_eq!(st.store.sticker_per_min().unwrap(), 7);
+        // checkbox ausente desliga; limite fora de 1..=30 é recusado sem alterar
+        let r = app
+            .clone()
+            .oneshot(post(
+                "/settings",
+                &format!("{base}&sticker_per_min=31"),
+                None,
+                Some(&tok),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert!(st.store.viewonce_enabled().unwrap());
+        let r = app
+            .oneshot(post(
+                "/settings",
+                &format!("{base}&sticker_per_min=7"),
+                None,
+                Some(&tok),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(!st.store.viewonce_enabled().unwrap());
     }
 
     #[test]

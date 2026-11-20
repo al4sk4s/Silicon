@@ -5,6 +5,7 @@ mod lock;
 mod panel;
 mod roles;
 mod state;
+mod stickers;
 mod wa;
 
 use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
@@ -165,6 +166,8 @@ async fn daemon(dir: &Path) -> Result<(), BoxErr> {
     };
     let session = dir.join("session.db");
     let session = session.to_str().ok_or("caminho da sessão não é UTF-8")?;
+
+    stickers::check::probe().await;
 
     // Qualquer lado que terminar encerra o processo; wa::run Ok = shutdown pedido.
     tokio::select! {

@@ -1993,6 +1993,7 @@ dependencies = [
  "argon2",
  "axum",
  "axum-server",
+ "libc",
  "qrcode",
  "rand 0.9.5",
  "rcgen",

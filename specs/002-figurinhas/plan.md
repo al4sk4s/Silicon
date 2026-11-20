@@ -24,6 +24,11 @@ Achados que mudam a spec:
    Flags VP8X ok (0x12 = animação + alfa); ffprobe leu 45 frames.
 4. Padrões: `sticker_per_min = 3` por chat, `viewonce_enabled = 0`.
 
+**Atualização (implementação):** todo vídeo/GIF (não só viewOnce) entra no ffmpeg por `memfd`
+(`/proc/self/fd/N`), então `moov` no fim não importa e o fallback `/dev/shm` foi removido; só
+imagem usa pipe. `MediaType`/`DownloadLimits`: `whatsapp_rust::download::{MediaType, DownloadLimits}`;
+`UploadOptions`/`UploadResponse`: `whatsapp_rust::upload`.
+
 ## API confirmada da lib (eeb24da)
 - **Citada:** `ctx.message.context_info()` (`wacore/src/proto_helpers.rs:259`) → `ContextInfo`
   com `stanza_id`, `participant`, `quoted_message: MessageField<wa::Message>`. O conteúdo
