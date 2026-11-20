@@ -105,7 +105,8 @@ com cache frio) e `/s` refaz o probe se o flag estiver falso.
 - Implementado (T11/T12, respostas conservadoras, o dono pode mudar): comando `/rename` sem espaço; `/rename nome`
   sem `/` é erro com o uso (autor não é opcional); só a 1ª `/` separa (o resto vai no autor); limite 64 caracteres
   (também no painel); `@al4sk4s` é texto configurável no painel. `/s` e `/rename` dividem o mesmo limite por chat.
-  EXIF: TIFF LE, tag 0x5741, JSON com `sticker-pack-id` fixo `silicon`; VP8X criado se faltar. Falha no EXIF nunca
+  EXIF: TIFF LE, tag 0x5741, JSON com `sticker-pack-id` fixo `silicon`; VP8X criado se faltar. Não há `strip_exif`:
+  `with_exif("", "")` já cobre `/rename /`. Falha no EXIF nunca
   derruba o envio de `/s`. Risco aberto: a figurinha citada pode vir sem `media_key` (download falha) e o WhatsApp
   pode ignorar esse EXIF (fonte só comunitária); ambos dependem do [WA].
 - Perguntas ao dono (já respondidas pelo padrão acima): (1) o comando é `/rename` (sem espaço)? (2) `/rename nome` sem `/` vale como só nome (autor

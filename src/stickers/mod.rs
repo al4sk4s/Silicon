@@ -193,6 +193,9 @@ pub async fn handle_rename(
     args: Result<(String, String), &'static str>,
 ) {
     let chat = ctx.info.source.chat.to_string();
+    if !allowed(ctx, st, sent, &chat).await {
+        return;
+    }
     let (name, publisher) = match args {
         Ok(a) => a,
         Err(m) => return reply(ctx, sent, m).await,
@@ -205,9 +208,6 @@ pub async fn handle_rename(
     let Some(stk) = quoted.and_then(|q| q.sticker_message.as_option()) else {
         return reply(ctx, sent, RENAME_USO).await;
     };
-    if !allowed(ctx, st, sent, &chat).await {
-        return;
-    }
     use whatsapp_rust::download::DownloadLimits;
     const MAX_STK: u64 = 2 * 1024 * 1024;
     if stk.file_length.is_some_and(|n| n > MAX_STK) {

@@ -378,6 +378,18 @@ async fn settings_post(State(st): S, Form(f): Fields) -> Response {
     let owner = f.get("owner_jid").map_or("", |s| s.trim());
     let field = |k: &str| f.get(k).map_or("", |s| s.trim()).to_string();
     let (pack, publisher) = (field("sticker_pack_name"), field("sticker_publisher"));
+    if pack.chars().count() > crate::stickers::MAX_FIELD
+        || publisher.chars().count() > crate::stickers::MAX_FIELD
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Html(settings_page(
+                &st,
+                "Nome e autor aceitam até 64 caracteres.",
+            )),
+        )
+            .into_response();
+    }
     let res = st
         .store
         .set_sticker_meta(&pack, &publisher)
@@ -542,6 +554,16 @@ mod tests {
         assert_eq!(st.store.sticker_per_min().unwrap(), 7);
         assert_eq!(st.store.sticker_pack_name().unwrap(), "Meu pacote");
         assert_eq!(st.store.sticker_publisher().unwrap(), "Eu");
+        let longo = format!(
+            "{base}&sticker_per_min=7&sticker_pack_name={}",
+            "a".repeat(65)
+        );
+        let r = app
+            .clone()
+            .oneshot(post("/settings", &longo, None, Some(&tok)))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
         // limite fora de 1..=30 é recusado sem alterar
         let r = app
             .clone()
