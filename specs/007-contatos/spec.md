@@ -1,6 +1,6 @@
 # Spec 007 — Aba Contatos no painel
 
-Status: **rascunho; decisões de produto aprovadas pelo dono em 2026-11-20, texto a revisar** · Depende de: 004, 005 · Constituição 1.1.0 (sem emenda)
+Status: **aprovada e implementada (T1–T3); T4 [WA] pendente; decisões de produto aprovadas pelo dono em 2026-11-20, texto a revisar** · Depende de: 004, 005 · Constituição 1.1.0 (sem emenda)
 
 ## Por quê
 Liberar uma pessoa hoje exige que ela mande mensagem e o dono dê `/c allow` no chat dela

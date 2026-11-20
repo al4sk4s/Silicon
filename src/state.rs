@@ -53,6 +53,8 @@ pub struct AppState {
     pub groups: Mutex<Vec<(String, String)>>,
     /// JIDs que mandaram mensagem recentemente (jid -> unix s). Só em memória.
     pub recent: Mutex<HashMap<String, u64>>,
+    /// Cliente do WhatsApp enquanto a sessão está de pé (spec 007: consulta de números).
+    pub client: Mutex<Option<std::sync::Arc<whatsapp_rust::Client>>>,
     /// Painel servido por HTTPS: cookie ganha `Secure`.
     pub https: bool,
 }
@@ -111,6 +113,7 @@ impl AppState {
             events: Mutex::default(),
             groups: Mutex::default(),
             recent: Mutex::default(),
+            client: Mutex::default(),
             https,
         }
     }
