@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1A1D23"/><stop offset="1" stop-color="#0B0C10"/></linearGradient>
+<linearGradient id="edge" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F2F5FA"/><stop offset=".45" stop-color="#9AA3B2"/><stop offset=".7" stop-color="#D8DEE8"/><stop offset="1" stop-color="#6B7380"/></linearGradient>
+<linearGradient id="chip" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#A9B1BE"/></linearGradient>
+</defs>
+<rect width="1024" height="1024" fill="url(#bg)"/>
+<!-- facets -->
+<polygon points="512,172 688,274 755,371 642,437 512,362" fill="#8E97A6"/>
+<polygon points="755,371 806,444 806,682 642,587 642,437" fill="#4A515D"/>
+<polygon points="806,682 730,726 800,830 650,772 512,852 512,662 642,587" fill="#2A2F37"/>
+<polygon points="512,852 218,682 382,587 512,662" fill="#1E2229"/>
+<polygon points="218,682 218,342 382,437 382,587" fill="#3A404A"/>
+<polygon points="218,342 512,172 512,362 382,437" fill="#C3CAD5"/>
+<polygon points="512,362 642,437 642,587 512,662 382,587 382,437" fill="#5D6573"/>
+<g stroke="url(#edge)" stroke-width="30" stroke-linejoin="round" stroke-linecap="round" fill="none">
+<path d="M512 172 L688 274 L806 444 L806 682 L730 726 L800 830 L650 772 L512 852 L218 682 L218 342 Z"/>
+<polygon points="512,362 642,437 642,587 512,662 382,587 382,437"/>
+<path d="M512 172V362 M218 342L382 437 M218 682L382 587 M512 852V662 M806 682L642 587 M755 371L642 437"/>
+</g>
+<rect x="462" y="462" width="100" height="100" rx="14" fill="url(#chip)"/>
+<path stroke="#DDE3EC" stroke-width="12" stroke-linecap="round" d="M482 462v-24 M512 462v-24 M542 462v-24 M482 562v24 M512 562v24 M542 562v24 M462 482h-24 M462 512h-24 M462 542h-24 M562 482h24 M562 512h24 M562 542h24"/>
+<rect x="486" y="486" width="52" height="52" rx="6" fill="#2A2F37"/>
+<polygon points="688,274 806,444 710,408" fill="#F4F6FA" stroke="#F4F6FA" stroke-width="10" stroke-linejoin="round"/>
+<polygon points="688,274 710,408 735,395" fill="#B5BCC8"/>
+</svg>

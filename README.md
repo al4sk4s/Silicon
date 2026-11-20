@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🪨 Silicon
+<img src="assets/silicon.svg" alt="Ícone do Silicon" width="128">
+
+# Silicon
 
 **Um bot de WhatsApp em Rust, de terminal, feito para morar no seu servidor.**
 Figurinhas na hora, alerta de promoção "bugada" e um painel simples para mandar em tudo.
