@@ -46,7 +46,7 @@ de `data_dir`, `temp_dir()` e `/dev/shm` antes/depois de `handle_bytes(view_once
 **Build 2** (integração) após T8–T9.
 
 ## Onda C — validação e opcional
-**T10. [WA] Validação real** · integração — figurinha estática e animada abrem no Android/iOS;
+**T10. [WA] Validação real (viewOnce: ✗ sem media_key, ver spec; resto pendente)** · integração — figurinha estática e animada abrem no Android/iOS;
 aceita sem EXIF; **viewOnce: a citação traz `media_key` e o dispositivo vinculado baixa?**
 (risco maior: fazer **primeiro**, antes de polir); GIF do app vem com faststart; tempos.
 Depende: T8.

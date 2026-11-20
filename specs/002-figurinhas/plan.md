@@ -139,3 +139,8 @@ após o 7. Erro pesado de tipos `buffa`/`MessageField` → revisão mais cuidado
 ## Não verificado
 Re-export de `MediaType`; tempo das conversões no servidor; GIF real do WhatsApp; comportamento
 no app.
+
+## Achado do T10 [WA] (19/11/2026)
+Risco do viewOnce confirmado: citação sem `media_key` → download impossível no dispositivo vinculado
+(`MissingPlaintextHash`). O plano de memfd/pipe só para viewOnce perde o motivo; memfd segue para todo vídeo.
+Ver spec.md. `stickers::handle` agora loga o erro da lib (`download falhou: …`, sem mídia nem JID).

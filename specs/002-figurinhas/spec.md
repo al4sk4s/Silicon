@@ -75,3 +75,12 @@ Pacotes de figurinha, edição de figurinha (texto/recorte), converter figurinha
   bytes/KB (usamos o teto menor).
 - Mídias de visualização única mais novas podem não baixar para dispositivo vinculado;
   validar com mensagem real.
+
+## Achado do T10 [WA] — viewOnce NÃO baixa (19/11/2026)
+Testado no pareamento real (grupo `comando`, 2 imagens de visualização única, `/s` citando): o original chega
+ao aparelho vinculado como `<unavailable>` (log da lib: "unrecoverable <unavailable> child (type: ViewOnce)")
+e a citação **vem sem `media_key`**. `client.download` falha com `MissingPlaintextHash` (sem chave a lib trata a
+mídia como não criptografada e exige `file_sha256`). Resposta ao usuário: "Não consegui baixar"; evento
+`figurinha_erro_download`. **RF5/RF9 (viewOnce) não são viáveis como especificados**; decisão do dono pendente
+(ex.: remover viewOnce da spec e responder só "não suportado"). Vídeo de visualização única não foi testado
+(mesmo mecanismo). Estática/animada normais: ainda por validar.

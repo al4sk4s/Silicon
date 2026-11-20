@@ -115,9 +115,14 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
         return reply("Mídia pesada demais").await;
     }
     let limits = DownloadLimits::new(max_plain + 65_536, max_plain);
-    let Ok(bytes) = ctx.client.download(dl, limits).await else {
-        st.push_event("figurinha_erro_download", &chat);
-        return reply("Não consegui baixar").await;
+    let bytes = match ctx.client.download(dl, limits).await {
+        Ok(b) => b,
+        Err(e) => {
+            // só o erro da lib (sem mídia nem JID); ajuda a achar a causa
+            tracing::warn!(view_once = src.view_once, "download falhou: {e}");
+            st.push_event("figurinha_erro_download", &chat);
+            return reply("Não consegui baixar").await;
+        }
     };
     let webp = match make(src.kind, &bytes).await {
         Ok(w) => w,
