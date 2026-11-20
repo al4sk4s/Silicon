@@ -15,7 +15,7 @@ pub async fn probe() {
         .stderr(Stdio::null())
         .kill_on_drop(true)
         .output();
-    let ok = match tokio::time::timeout(Duration::from_secs(5), run).await {
+    let ok = match tokio::time::timeout(Duration::from_secs(30), run).await {
         Ok(Ok(o)) => {
             let found = has_encoder(&String::from_utf8_lossy(&o.stdout));
             if !(o.status.success() && found) {
