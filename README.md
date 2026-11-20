@@ -13,9 +13,10 @@ Figurinhas na hora, alerta de promoção "bugada" e um painel simples para manda
 
 ---
 
-> **Em que pé estamos:** o projeto está na fase de **especificação**. Já existem a
-> constituição, três specs com plano e tarefas, mas **ainda não há código**. Este README
-> descreve o que vamos construir, não o que já funciona.
+> **Em que pé estamos:** o **núcleo (spec 001)** já está implementado e validado no
+> WhatsApp real (login, painel, papéis, reconexão). Os **comandos de figurinha (002)** e o
+> **alerta de bug (003)** ainda são só especificação: este README descreve o que vamos
+> construir, não o que já funciona.
 
 ## ✨ O que o Silicon vai fazer
 

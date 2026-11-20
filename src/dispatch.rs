@@ -7,6 +7,14 @@ pub enum Action {
     Monitor,
 }
 
+/// Tira o sufixo de dispositivo (`user:80@lid` -> `user@lid`) para comparar o dono.
+fn bare(jid: &str) -> String {
+    match jid.split_once('@') {
+        Some((u, d)) => format!("{}@{d}", u.split(':').next().unwrap_or(u)),
+        None => jid.to_string(),
+    }
+}
+
 /// Decide o destino de uma mensagem só pelo papel do chat (P2/P3). Pura: sem IO.
 pub fn decide(
     roles: &ChatRoles,
@@ -24,7 +32,11 @@ pub fn decide(
     match role {
         Some(Role::Monitorado) => Action::Monitor,
         Some(Role::Comando) => Action::Command {
-            admin: from_me || owner.is_some() && (owner == Some(sender) || owner == sender_alt),
+            admin: from_me
+                || owner.is_some_and(|o| {
+                    let o = bare(o);
+                    o == bare(sender) || sender_alt.is_some_and(|a| o == bare(a))
+                }),
         },
         // Alerta é só destino; sem papel é ignorado.
         Some(Role::Alerta) | None => Action::Drop,
@@ -79,5 +91,14 @@ mod tests {
             adm(Some("a"), false, Some("a")),
             Action::Command { admin: true }
         );
+    }
+
+    #[test]
+    fn owner_matches_ignoring_device_suffix() {
+        let r = roles(&[("c", Role::Comando)]);
+        let d = |sender, owner| decide(&r, "c", sender, None, false, Some(owner));
+        assert_eq!(d("1:80@lid", "1@lid"), Action::Command { admin: true });
+        assert_eq!(d("1@lid", "1:82@lid"), Action::Command { admin: true });
+        assert_eq!(d("2:80@lid", "1@lid"), Action::Command { admin: false });
     }
 }
