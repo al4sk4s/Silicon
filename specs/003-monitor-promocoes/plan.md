@@ -1,7 +1,7 @@
 # Plano 003 — Monitor de promoções (alerta de bug)
 
 Status: rascunho · Spec: `specs/003-monitor-promocoes/spec.md` · Depende de: 001 ·
-Constituição v0.2.0 · whatsapp-rust @ `eeb24da`. ## Decisões a confirmar
+Constituição 1.1.0 · whatsapp-rust @ `eeb24da`. ## Decisões a confirmar
 1. **Alerta = mensagem nova, não "encaminhada".** Texto: `client.send_message(alerta, msg)` com
    `extended_text_message` + `context_info.mentioned_jid`. Imagem/vídeo:
    `MessageExt::media_with_caption(&caption)` (`wacore/src/proto_helpers.rs:203`) **reaproveita

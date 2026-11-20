@@ -1,6 +1,6 @@
 # Spec 003 — Monitor de promoções (alerta de bug)
 
-Status: **rascunho para alinhar** · Depende de: 001 · Constituição v0.2.0 (emendas P1/P2 aplicadas)
+Status: **decisões do dono aprovadas em 2026-11-20; aguardando aprovação do texto para `/planejar 003`** · Depende de: 001, 004 · Constituição 1.1.0 (sem emenda nova)
 
 ## Por quê
 No grupo de promoções saem "bugs de preço". O dono quer ser avisado na hora, sem ficar
@@ -48,12 +48,24 @@ LLM/serviço externo, scraping de lojas, comparação de preço, resposta no gru
 Esta spec usa a **exceção da P1** (alerta ao dono, só para o chat `alerta`) e os papéis da
 P2 (`monitorado`, `alerta`). Respeita a P8 com dedupe e limite de alertas (RF4/RF5).
 
-## Decisões a confirmar
-1. **Detecção**: regras/regex no MVP (grátis, privado, editável). LLM fica fora.
-2. O risco de ban é maior com número principal + monitor 24/7 + encaminhamento. Recomendo
-   migrar para o chip secundário quando possível (troca de sessão, sem mudar código).
+## Decisões do dono (2026-11-20)
+1. **O que é "bug":** só a palavra `bug` e derivações (regra padrão, RF2). Mais regras depois,
+   criadas pelo painel. Sem regra de "preço absurdo" no MVP.
+2. **Formato:** **mensagem nova** (não "encaminhada") com `@todos`, como no RF3.
+3. **Limites:** padrões do rascunho: dedupe 30 min, 10 alertas/h, sem silêncio por padrão
+   (configurável), histórico de 7 dias só com resumo (RF4–RF6).
+4. Risco de ban maior com número principal + monitor 24/7: recomendado chip secundário (troca
+   de sessão, sem mudar código).
 
-## Perguntas em aberto
-- O alerta deve **encaminhar** (aparece "encaminhada") ou reenviar como texto novo com
-  autor e regra? Recomendo reenviar (controla o formato e o `@todos`).
-- Em grupo, `@todos` exige o bot saber os participantes; validar na API da lib.
+## Convivência com o estado atual do código
+- Hoje `decide` devolve `Action::Monitor` para `monitorado` e `wa.rs` descarta (gancho vazio).
+  A 003 só preenche esse gancho: o bot continua **mudo** no chat monitorado (nunca `reply`,
+  reação nem read receipt); o envio vai só ao chat `alerta`, lido na hora do envio.
+- `alerta` continua `Action::Drop` (só destino). Comando do dono em `monitorado`/`alerta` segue
+  ignorado (004 RF2); o papel desses chats só muda pelo painel.
+- Sem chat `alerta` configurado: nada é enviado; o painel registra o evento.
+
+## Perguntas em aberto (resolver no plano/[WA])
+- `@todos` exige participantes via `fetch_metadata` e menção em `mentioned_jid`; se a menção
+  "oculta" não notificar, o texto leva `@<user>` por pessoa (grupo pequeno).
+- Mídia reaproveitada do CDN pode expirar; plano B: baixar e reenviar, senão só texto.
