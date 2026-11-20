@@ -71,8 +71,12 @@ fn cookie_token(h: &HeaderMap) -> Option<String> {
         .map(|(_, v)| v.to_string())
 }
 
-fn same_origin(h: &HeaderMap) -> bool {
-    let host = h.get(header::HOST).and_then(|v| v.to_str().ok());
+fn same_origin(h: &HeaderMap, uri: &axum::http::Uri) -> bool {
+    // HTTP/2 não manda `Host`: o host vem em `:authority`, que aparece na URI.
+    let host = h
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .or_else(|| uri.authority().map(|a| a.as_str()));
     match h.get(header::ORIGIN) {
         Some(o) => {
             let o = o.to_str().unwrap_or("");
@@ -85,7 +89,7 @@ fn same_origin(h: &HeaderMap) -> bool {
 
 /// CSRF em todo POST, depois auth em tudo menos /login, e cabeçalhos de resposta.
 async fn guard(State(st): S, req: Request, next: Next) -> Response {
-    let mut resp = if req.method() == Method::POST && !same_origin(req.headers()) {
+    let mut resp = if req.method() == Method::POST && !same_origin(req.headers(), req.uri()) {
         (StatusCode::FORBIDDEN, "origem não permitida").into_response()
     } else if req.uri().path() != "/login"
         && !cookie_token(req.headers()).is_some_and(|t| st.sessions.valid(&t))
@@ -400,6 +404,23 @@ mod tests {
             b = b.header("cookie", format!("silicon_session={c}"));
         }
         b.body(Body::from(body.to_string())).unwrap()
+    }
+
+    #[tokio::test]
+    async fn h2_login_uses_authority_not_host() {
+        let (app, _) = app();
+        // HTTP/2: sem header Host, URI absoluta com authority
+        let r = app
+            .oneshot(
+                Request::post("https://box:8080/login")
+                    .header("origin", "https://box:8080")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("password=x"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_ne!(r.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
