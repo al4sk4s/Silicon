@@ -53,7 +53,7 @@ respondendo à mensagem de origem.
   ainda não conferido**). O bot checa no boot; ausente → o comando responde "ffmpeg ausente".
 
 ## Fora do escopo
-Pacotes de figurinha, edição de figurinha (texto/recorte), converter figurinha em imagem.
+Pacotes de figurinha, edição de figurinha (texto/recorte; `/rename` só troca nome/autor, RF11), converter figurinha em imagem.
 
 ## Critérios de aceite
 - Imagem e vídeo respondidos geram figurinhas que abrem e tocam no app.
@@ -84,3 +84,24 @@ mídia como não criptografada e exige `file_sha256`). Resposta ao usuário: "N�
 `figurinha_erro_download`. **RF5/RF9 (viewOnce) não são viáveis como especificados**; decisão do dono pendente
 (ex.: remover viewOnce da spec e responder só "não suportado"). Vídeo de visualização única não foi testado
 (mesmo mecanismo). Estática/animada normais: ainda por validar.
+
+## Resultado do T10 [WA] (20/11/2026)
+Imagem não quadrada, vídeo e GIF respondidos com `/s` no grupo de teste: figurinhas **perfeitas** (dono). Mídia é esticada
+para 512x512 (decisão do dono: sem corte nem barras, proporção distorcida). Sem EXIF funciona. Pendentes: Android/iOS
+lado a lado, rajada/"Calma…", `/s` sem citar, tempos medidos. Probe do ffmpeg: timeout subiu para 30 s (boot falhava
+com cache frio) e `/s` refaz o probe se o flag estiver falso.
+
+## Nome e autor da figurinha + `/rename` (pedido do dono, 20/11/2026; só plano, não implementado)
+- RF10 Toda figurinha gerada leva EXIF com **nome do pacote** e **autor** (o que aparece ao tocar na figurinha).
+  Padrões: nome **`Silicon™`**, autor **`@al4sk4s`**. Dois campos novos em **Ajustes** do painel (`sticker_pack_name`,
+  `sticker_publisher`), válidos para as figurinhas novas. Substitui o RF6 "opcional" (T11).
+- RF11 Comando **`/rename`**: o usuário responde (cita) uma **figurinha** e manda `/rename campo1 / campo2`. O bot
+  baixa a figurinha citada, troca nome=campo1 e autor=campo2 no EXIF e responde com a figurinha nova (mesmo
+  limite por chat e mesmo atraso de 1–2 s do `/s`). `/rename /` (só a barra) **limpa os dois** (nome e autor
+  vazios, como as figurinhas de hoje). Só em chat com papel `comando`; nunca inicia conversa.
+- RF12 Validação do `/rename`: sem citar figurinha → "Responda uma figurinha com /rename nome / autor"; campo
+  acima de 64 caracteres (valor a confirmar) → recusa curta; sem a `/` → recusa com o uso. Figurinha animada e
+  estática mantêm os bytes do WebP; só o chunk `EXIF` muda.
+- Perguntas ao dono: (1) o comando é `/rename` (sem espaço)? (2) `/rename nome` sem `/` vale como só nome (autor
+  vazio) ou é erro? (3) o EXIF novo aparece em figurinhas já enviadas? (não: só nas geradas depois). (4) o
+  `@al4sk4s` do autor é texto fixo mesmo ou o nome do dono configurado?

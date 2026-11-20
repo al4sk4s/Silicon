@@ -107,8 +107,16 @@ Figurinha abre e anima no Android e no iOS; aceita **sem EXIF**; a citação de 
 `media_key` inline e o download pelo dispositivo vinculado funciona (viewOnce novo pode vir sem
 chave); tempo real de upload; o GIF do app vem com faststart.
 
-## EXIF (opcional, tarefa separada)
-Chunk `EXIF` no RIFF com JSON pack/publisher, editável no painel. Só depois do MVP.
+## EXIF + `/rename` (T11/T12, após T10)
+- `src/stickers/exif.rs`: monta o chunk `EXIF` (TIFF LE, tag `0x5741`, JSON com `sticker-pack-name` /
+  `sticker-pack-publisher`) e o injeta no RIFF/WebP (VP8X com bit EXIF, chunk antes de `ANMF`/dados conforme o
+  formato). Funções puras testáveis: `with_exif(webp, name, publisher) -> Vec<u8>` e `strip_exif`.
+- `stickers::handle` chama `with_exif` com os campos do painel (config: `sticker_pack_name`, `sticker_publisher`).
+- `/rename`: no despacho (`wa.rs`) ao lado de `/s`; pega `quoted_message.sticker_message`, baixa (mesmo `download`
+  com `DownloadLimits`), troca o EXIF, reenvia como figurinha (`is_animated` vem do WebP). Parser puro:
+  `parse_rename("nome / autor") -> (String, String)`; `"/"` → vazios. Reusa limitador/atraso do `/s`.
+- Riscos: a figurinha citada de outro aparelho pode vir sem `media_key` como o viewOnce (verificar no T10 do
+  rename); não verificado se o WhatsApp mostra o nome/autor assim; EXIF não comprovado como obrigatório.
 
 ## Riscos
 1. Citação de viewOnce pode vir sem chave para dispositivo vinculado → feature pode não
