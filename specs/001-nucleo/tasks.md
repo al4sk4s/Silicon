@@ -100,7 +100,7 @@ Livres (sem build): T2, T10; T3–T6 juntos. Serial (integração, `-j1`): Build
   um papel salvo por "JID manual" em forma PN (`55…@s.whatsapp.net`) **não casaria** — salvar DMs pelo JID LID.
   O `sender` do próprio dono (`from_me`) vem como `<lid>:80@lid` (com sufixo de dispositivo, `sender_alt=None`);
   o admin passa por `from_me`. Outros remetentes vieram sem sufixo.
-- [ ] 5 Anti-loop **não verificado**: com resposta fixa (só local, revertida; `git diff` vazio) saiu 1 resposta por comando
+- [x] 5 Anti-loop **não verificado**: com resposta fixa (só local, revertida; `git diff` vazio) saiu 1 resposta por comando
   e o `message_id` do envio ≠ `info.id` do original, mas **o eco da resposta não chegou como evento** neste aparelho. Logo
   `sent.contains` não foi exercitado; só a guarda "resposta que começa com `/`" e o fato de não haver eco. Reavaliar com outro aparelho/número.
 - [x] 6 Atraso: resposta em 1–2 s (padrão 1000–2000 ms). Queda de rede (`nmcli networking off/on`, 30 s):
@@ -117,5 +117,6 @@ Livres (sem build): T2, T10; T3–T6 juntos. Serial (integração, `-j1`): Build
 - Ainda pendentes: (a) fingerprint no navegador; item 5 (eco) com o aparelho de um amigo.
 - [x] (a) Fingerprint no Brave conferido pelo dono: igual ao do log (`CB:CB:79:…:5B:05`).
 - [x] Segundo aparelho (Lucas, 1:1 `93608963260605@lid`, papel `comando` por JID manual LID): 1 resposta, **1 evento `comando`** no painel, sem laço. O sender dele chega com sufixo `:93`.
-- [ ] 5 Eco: ainda **não exercitado** (stdout não registra mensagens; descartar o eco é silencioso). Pendência **aceita pelo dono**; `Sent` tem teste unitário. Rever se a spec 002 mostrar resposta duplicada.
+- [x] 5 Eco: ainda **não exercitado** (stdout não registra mensagens; descartar o eco é silencioso). Pendência **aceita pelo dono**; `Sent` tem teste unitário. Rever se a spec 002 mostrar resposta duplicada.
+  Fechado em 20/11/2026 (dono aprovou): validação da 002 no WhatsApp real (Android/iOS) saiu sem duplicata nem laço; o eco nunca chegou como evento.
 - Nome do aparelho no WhatsApp: `with_device_props(...with_os("Silicon™"))` em `wa.rs`; vale só num **novo** pareamento (a sessão de teste atual ainda mostra o nome antigo).
