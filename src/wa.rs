@@ -65,13 +65,32 @@ async fn on_message(st: Arc<AppState>, sent: Arc<Sent>, ctx: MessageContext) {
     if src.is_from_me && sent.contains(ctx.info.id.as_str()) {
         return;
     }
-    let Some(text) = ctx.message.text_content() else {
+    // Legenda de imagem/vídeo também vale (RF2: comando na própria mídia).
+    let Some(text) = ctx
+        .message
+        .text_content()
+        .or_else(|| ctx.message.get_caption())
+    else {
         return;
     };
     if !text.starts_with('/') {
         return;
     }
     st.push_event("comando", &chat);
+    if crate::stickers::parse_cmd(text) {
+        let min = st.store.delay_min_ms().unwrap_or(1000);
+        let max = st.store.delay_max_ms().unwrap_or(2000);
+        tokio::time::sleep(pick_delay(min, max)).await;
+        crate::stickers::handle(&ctx, &st, &sent).await;
+        return;
+    }
+    if let Some(args) = crate::stickers::parse_rename(text) {
+        let min = st.store.delay_min_ms().unwrap_or(1000);
+        let max = st.store.delay_max_ms().unwrap_or(2000);
+        tokio::time::sleep(pick_delay(min, max)).await;
+        crate::stickers::handle_rename(&ctx, &st, &sent, args).await;
+        return;
+    }
     let Some(reply) = command_reply(text, admin) else {
         return;
     };

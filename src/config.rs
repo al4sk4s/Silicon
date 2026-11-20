@@ -121,6 +121,49 @@ impl Store {
         self.get_u64("delay_max_ms", 2000)
     }
 
+    // fora de 1..=30 ou lixo no banco cai no padrão 3
+    pub fn sticker_per_min(&self) -> Result<usize> {
+        Ok(self
+            .get("sticker_per_min")?
+            .and_then(|v| v.parse().ok())
+            .filter(|n| (1..=30).contains(n))
+            .unwrap_or(3))
+    }
+
+    pub fn set_sticker_per_min(&self, n: usize) -> Result<()> {
+        if !(1..=30).contains(&n) {
+            return Err("figurinhas por minuto deve estar entre 1 e 30".into());
+        }
+        self.set("sticker_per_min", &n.to_string())
+    }
+
+    /// Nome e autor gravados no EXIF das figurinhas novas (RF10); vazio é válido.
+    pub fn sticker_pack_name(&self) -> Result<String> {
+        Ok(self
+            .get("sticker_pack_name")?
+            .unwrap_or_else(|| "Silicon™".into()))
+    }
+
+    pub fn sticker_publisher(&self) -> Result<String> {
+        Ok(self
+            .get("sticker_publisher")?
+            .unwrap_or_else(|| "@al4sk4s".into()))
+    }
+
+    pub fn set_sticker_meta(&self, name: &str, publisher: &str) -> Result<()> {
+        if name.chars().count() > crate::stickers::MAX_FIELD
+            || publisher.chars().count() > crate::stickers::MAX_FIELD
+        {
+            return Err(format!(
+                "nome e autor aceitam até {} caracteres",
+                crate::stickers::MAX_FIELD
+            )
+            .into());
+        }
+        self.set("sticker_pack_name", name)?;
+        self.set("sticker_publisher", publisher)
+    }
+
     pub fn bind(&self) -> Result<String> {
         Ok(self.get("bind")?.unwrap_or_else(|| "127.0.0.1:8080".into()))
     }
@@ -162,6 +205,17 @@ mod tests {
     }
 
     #[test]
+    fn sticker_meta_defaults_and_limit() {
+        let s = Store::memory().unwrap();
+        assert_eq!(s.sticker_pack_name().unwrap(), "Silicon™");
+        assert_eq!(s.sticker_publisher().unwrap(), "@al4sk4s");
+        s.set_sticker_meta("", "x").unwrap();
+        assert_eq!(s.sticker_pack_name().unwrap(), "");
+        assert!(s.set_sticker_meta(&"a".repeat(65), "x").is_err());
+        assert_eq!(s.sticker_publisher().unwrap(), "x");
+    }
+
+    #[test]
     fn settings_and_defaults() {
         let s = Store::memory().unwrap();
         assert_eq!(s.delay_min_ms().unwrap(), 1000);
@@ -178,6 +232,21 @@ mod tests {
         // Dono vazio (limpo pelo painel) = sem dono.
         s.set("owner_jid", "").unwrap();
         assert_eq!(s.owner_jid().unwrap(), None);
+    }
+
+    #[test]
+    fn sticker_settings() {
+        let s = Store::memory().unwrap();
+        assert_eq!(s.sticker_per_min().unwrap(), 3);
+        s.set_sticker_per_min(30).unwrap();
+        assert_eq!(s.sticker_per_min().unwrap(), 30);
+        assert!(s.set_sticker_per_min(0).is_err());
+        assert!(s.set_sticker_per_min(31).is_err());
+        assert_eq!(s.sticker_per_min().unwrap(), 30);
+        s.set("sticker_per_min", "999").unwrap();
+        assert_eq!(s.sticker_per_min().unwrap(), 3);
+        s.set("sticker_per_min", "abc").unwrap();
+        assert_eq!(s.sticker_per_min().unwrap(), 3);
     }
 
     #[test]

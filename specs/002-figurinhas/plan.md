@@ -24,6 +24,11 @@ Achados que mudam a spec:
    Flags VP8X ok (0x12 = animação + alfa); ffprobe leu 45 frames.
 4. Padrões: `sticker_per_min = 3` por chat, `viewonce_enabled = 0`.
 
+**Atualização (implementação):** todo vídeo/GIF (não só viewOnce) entra no ffmpeg por `memfd`
+(`/proc/self/fd/N`), então `moov` no fim não importa e o fallback `/dev/shm` foi removido; só
+imagem usa pipe. `MediaType`/`DownloadLimits`: `whatsapp_rust::download::{MediaType, DownloadLimits}`;
+`UploadOptions`/`UploadResponse`: `whatsapp_rust::upload`.
+
 ## API confirmada da lib (eeb24da)
 - **Citada:** `ctx.message.context_info()` (`wacore/src/proto_helpers.rs:259`) → `ContextInfo`
   com `stanza_id`, `participant`, `quoted_message: MessageField<wa::Message>`. O conteúdo
@@ -83,6 +88,7 @@ Achados que mudam a spec:
 "Responda uma imagem ou vídeo com /s" · "Mídia pesada demais" · "Formato não suportado" ·
 "Calma, muitas figurinhas agora" · "Não consegui baixar". Rate limit: responde uma vez e fica
 mudo até a janela passar (P8).
+Todas as respostas de erro/aviso do bot têm 8 variantes sorteadas por `vary()` em `reply` (pedido do dono, 20/11/2026); o texto da 1ª é o canônico dos testes.
 
 ## Testes (`cargo test`, sem rede)
 - `parse_cmd`: 3 aliases, caixa, texto depois, falsos positivos.
@@ -102,8 +108,16 @@ Figurinha abre e anima no Android e no iOS; aceita **sem EXIF**; a citação de 
 `media_key` inline e o download pelo dispositivo vinculado funciona (viewOnce novo pode vir sem
 chave); tempo real de upload; o GIF do app vem com faststart.
 
-## EXIF (opcional, tarefa separada)
-Chunk `EXIF` no RIFF com JSON pack/publisher, editável no painel. Só depois do MVP.
+## EXIF + `/rename` (T11/T12, após T10)
+- `src/stickers/exif.rs`: monta o chunk `EXIF` (TIFF LE, tag `0x5741`, JSON com `sticker-pack-name` /
+  `sticker-pack-publisher`) e o injeta no RIFF/WebP (VP8X com bit EXIF, chunk antes de `ANMF`/dados conforme o
+  formato). Funções puras testáveis: `with_exif(webp, name, publisher) -> Vec<u8>` e `strip_exif`.
+- `stickers::handle` chama `with_exif` com os campos do painel (config: `sticker_pack_name`, `sticker_publisher`).
+- `/rename`: no despacho (`wa.rs`) ao lado de `/s`; pega `quoted_message.sticker_message`, baixa (mesmo `download`
+  com `DownloadLimits`), troca o EXIF, reenvia como figurinha (`is_animated` vem do WebP). Parser puro:
+  `parse_rename("nome / autor") -> (String, String)`; `"/"` → vazios. Reusa limitador/atraso do `/s`.
+- Riscos: a figurinha citada de outro aparelho pode vir sem `media_key` como o viewOnce (verificar no T10 do
+  rename); não verificado se o WhatsApp mostra o nome/autor assim; EXIF não comprovado como obrigatório.
 
 ## Riscos
 1. Citação de viewOnce pode vir sem chave para dispositivo vinculado → feature pode não
@@ -134,3 +148,8 @@ após o 7. Erro pesado de tipos `buffa`/`MessageField` → revisão mais cuidado
 ## Não verificado
 Re-export de `MediaType`; tempo das conversões no servidor; GIF real do WhatsApp; comportamento
 no app.
+
+## Achado do T10 [WA] (19/11/2026)
+Risco do viewOnce confirmado: citação sem `media_key` → download impossível no dispositivo vinculado
+(`MissingPlaintextHash`). O plano de memfd/pipe só para viewOnce perde o motivo; memfd segue para todo vídeo.
+Ver spec.md. `stickers::handle` agora loga o erro da lib (`download falhou: …`, sem mídia nem JID).
