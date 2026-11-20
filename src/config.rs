@@ -18,6 +18,27 @@ CREATE UNIQUE INDEX one_alert ON roles(role) WHERE role='alerta';
 CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 ";
 
+// Spec 003: regras do monitor, lista de ignorar e histórico de alertas.
+// A regra "bug" é semeada só aqui (uma vez, ao criar a tabela): se o dono apagar, não volta.
+const SCHEMA_V2: &str = r"
+CREATE TABLE rules(id INTEGER PRIMARY KEY, nome TEXT NOT NULL, padrao TEXT NOT NULL,
+  ativa INTEGER NOT NULL DEFAULT 1);
+INSERT INTO rules(nome,padrao) VALUES('bug','\bbug(s|ad[oa]s?|ou|ar|ando|uei|zao|zinho|ue[im])?\b');
+CREATE TABLE ignore(id INTEGER PRIMARY KEY, padrao TEXT NOT NULL);
+CREATE TABLE alert_log(ts INTEGER NOT NULL, regra TEXT NOT NULL, resumo TEXT NOT NULL);
+";
+
+// "HH:MM" válido (00:00..23:59)
+fn hhmm_valido(s: &str) -> bool {
+    let Some((h, m)) = s.split_once(':') else {
+        return false;
+    };
+    h.len() == 2
+        && m.len() == 2
+        && h.parse::<u8>().is_ok_and(|h| h < 24)
+        && m.parse::<u8>().is_ok_and(|m| m < 60)
+}
+
 impl Store {
     /// Abre (ou cria) o banco em `path`, com permissão 0600 em Unix, e migra.
     pub fn open(path: &Path) -> Result<Store> {
@@ -42,6 +63,12 @@ impl Store {
             let tx = conn.transaction()?;
             tx.execute_batch(SCHEMA_V1)?;
             tx.execute_batch("PRAGMA user_version = 1")?;
+            tx.commit()?;
+        }
+        if version < 2 {
+            let tx = conn.transaction()?;
+            tx.execute_batch(SCHEMA_V2)?;
+            tx.execute_batch("PRAGMA user_version = 2")?;
             tx.commit()?;
         }
         Ok(Store(Mutex::new(conn)))
@@ -187,6 +214,166 @@ impl Store {
     pub fn password_hash(&self) -> Result<Option<String>> {
         self.get("password_hash")
     }
+
+    // ---- Monitor (spec 003) ----
+
+    /// Regras (id, nome, padrão, ativa). O padrão NÃO é validado aqui (o painel usa `detector::valida`).
+    pub fn rules(&self) -> Result<Vec<(i64, String, String, bool)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT id, nome, padrao, ativa FROM rules ORDER BY id")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    pub fn add_rule(&self, nome: &str, padrao: &str) -> Result<i64> {
+        let conn = self.conn();
+        conn.execute(
+            "INSERT INTO rules(nome, padrao) VALUES(?1, ?2)",
+            params![nome, padrao],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn update_rule(&self, id: i64, nome: &str, padrao: &str) -> Result<()> {
+        self.conn().execute(
+            "UPDATE rules SET nome = ?2, padrao = ?3 WHERE id = ?1",
+            params![id, nome, padrao],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_rule_active(&self, id: i64, ativa: bool) -> Result<()> {
+        self.conn().execute(
+            "UPDATE rules SET ativa = ?2 WHERE id = ?1",
+            params![id, ativa],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_rule(&self, id: i64) -> Result<()> {
+        self.conn()
+            .execute("DELETE FROM rules WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn ignores(&self) -> Result<Vec<(i64, String)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT id, padrao FROM ignore ORDER BY id")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    pub fn add_ignore(&self, padrao: &str) -> Result<i64> {
+        let conn = self.conn();
+        conn.execute("INSERT INTO ignore(padrao) VALUES(?1)", params![padrao])?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn delete_ignore(&self, id: i64) -> Result<()> {
+        self.conn()
+            .execute("DELETE FROM ignore WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    /// Registra um alerta enviado; o resumo é cortado em 80 chars (nunca guarda mídia).
+    pub fn log_alert(&self, ts: u64, regra: &str, resumo: &str) -> Result<()> {
+        let resumo: String = resumo.chars().take(80).collect();
+        self.conn().execute(
+            "INSERT INTO alert_log(ts, regra, resumo) VALUES(?1, ?2, ?3)",
+            params![ts as i64, regra, resumo],
+        )?;
+        Ok(())
+    }
+
+    /// Alertas mais recentes primeiro: (ts, regra, resumo).
+    pub fn alerts(&self, limit: usize) -> Result<Vec<(u64, String, String)>> {
+        let conn = self.conn();
+        let mut stmt =
+            conn.prepare("SELECT ts, regra, resumo FROM alert_log ORDER BY ts DESC LIMIT ?1")?;
+        let rows = stmt.query_map(params![limit as i64], |r| {
+            Ok((r.get::<_, i64>(0)? as u64, r.get(1)?, r.get(2)?))
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Apaga alertas com `ts` anterior a `agora - retencao_dias`; devolve quantos.
+    pub fn purge_alerts(&self, retencao_dias: u64, agora: u64) -> Result<usize> {
+        let corte = agora.saturating_sub(retencao_dias.saturating_mul(86_400));
+        Ok(self
+            .conn()
+            .execute("DELETE FROM alert_log WHERE ts < ?1", params![corte as i64])?)
+    }
+
+    // valor ausente, inválido ou fora da faixa cai no padrão
+    fn get_range(&self, key: &str, default: u64, max: u64) -> Result<u64> {
+        Ok(self
+            .get(key)?
+            .and_then(|v| v.parse().ok())
+            .filter(|n| (1..=max).contains(n))
+            .unwrap_or(default))
+    }
+
+    fn set_range(&self, key: &str, nome: &str, n: u64, max: u64) -> Result<()> {
+        if !(1..=max).contains(&n) {
+            return Err(format!("{nome} deve estar entre 1 e {max}").into());
+        }
+        self.set(key, &n.to_string())
+    }
+
+    /// Janela do dedupe em minutos (padrão 30).
+    pub fn dedupe_min(&self) -> Result<u64> {
+        self.get_range("dedupe_min", 30, 1440)
+    }
+
+    pub fn set_dedupe_min(&self, n: u64) -> Result<()> {
+        self.set_range("dedupe_min", "dedupe (min)", n, 1440)
+    }
+
+    /// Máximo de alertas por hora (padrão 10).
+    pub fn alertas_hora(&self) -> Result<u64> {
+        self.get_range("alertas_hora", 10, 1000)
+    }
+
+    pub fn set_alertas_hora(&self, n: u64) -> Result<()> {
+        self.set_range("alertas_hora", "alertas por hora", n, 1000)
+    }
+
+    /// Retenção do histórico em dias (padrão 7).
+    pub fn retencao_dias(&self) -> Result<u64> {
+        self.get_range("retencao_dias", 7, 365)
+    }
+
+    pub fn set_retencao_dias(&self, n: u64) -> Result<()> {
+        self.set_range("retencao_dias", "retenção (dias)", n, 365)
+    }
+
+    // "" = desligado; HH:MM inválido no banco também vira ""
+    fn get_hhmm(&self, key: &str) -> Result<String> {
+        Ok(self
+            .get(key)?
+            .filter(|v| hhmm_valido(v))
+            .unwrap_or_default())
+    }
+
+    /// Início do silêncio ("HH:MM" ou "" = desligado).
+    pub fn silencio_ini(&self) -> Result<String> {
+        self.get_hhmm("silencio_ini")
+    }
+
+    pub fn silencio_fim(&self) -> Result<String> {
+        self.get_hhmm("silencio_fim")
+    }
+
+    /// Grava o intervalo de silêncio; cada ponta é vazia ou "HH:MM" válido.
+    pub fn set_silencio(&self, ini: &str, fim: &str) -> Result<()> {
+        for v in [ini, fim] {
+            if !v.is_empty() && !hhmm_valido(v) {
+                return Err("silêncio deve ser vazio ou HH:MM (00:00 a 23:59)".into());
+            }
+        }
+        self.set("silencio_ini", ini)?;
+        self.set("silencio_fim", fim)
+    }
 }
 
 #[cfg(test)]
@@ -271,6 +458,119 @@ mod tests {
         assert_eq!(s.sticker_per_min().unwrap(), 3);
         s.set("sticker_per_min", "abc").unwrap();
         assert_eq!(s.sticker_per_min().unwrap(), 3);
+    }
+
+    #[test]
+    fn purge_usa_retencao_das_settings() {
+        let s = Store::memory().unwrap();
+        s.log_alert(1_000, "bug", "velho").unwrap();
+        s.log_alert(900_000, "bug", "novo").unwrap();
+        let n = s
+            .purge_alerts(s.retencao_dias().unwrap(), 1_000_000)
+            .unwrap(); // 7 dias = 604800 s
+        assert_eq!((n, s.alerts(10).unwrap().len()), (1, 1));
+    }
+
+    #[test]
+    fn rules_crud_and_seed_once() {
+        let s = Store::memory().unwrap();
+        let r = s.rules().unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].1, "bug");
+        assert_eq!(r[0].2, crate::detector::REGRA_BUG); // semente do SQL = constante testada
+        assert!(r[0].3);
+        let id = s.add_rule("promo", "promo").unwrap();
+        s.update_rule(id, "promo2", "promo\\d").unwrap();
+        s.set_rule_active(id, false).unwrap();
+        let r = s.rules().unwrap();
+        assert_eq!(r[1], (id, "promo2".into(), "promo\\d".into(), false));
+        s.delete_rule(r[0].0).unwrap();
+        s.delete_rule(id).unwrap();
+        assert!(s.rules().unwrap().is_empty());
+        let i = s.add_ignore("debug").unwrap();
+        assert_eq!(s.ignores().unwrap(), vec![(i, "debug".into())]);
+        s.delete_ignore(i).unwrap();
+        assert!(s.ignores().unwrap().is_empty());
+    }
+
+    #[test]
+    fn migrates_existing_v1_db_once() {
+        let path = std::env::temp_dir().join(format!("silicon-mig-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch(SCHEMA_V1).unwrap();
+            c.execute_batch("PRAGMA user_version = 1").unwrap();
+            c.execute("INSERT INTO roles VALUES('a@g.us','comando',NULL,1)", [])
+                .unwrap();
+            c.execute("INSERT INTO settings VALUES('delay_min_ms','700')", [])
+                .unwrap();
+        }
+        let s = Store::open(&path).unwrap();
+        assert_eq!(s.roles().unwrap().len(), 1);
+        assert_eq!(s.delay_min_ms().unwrap(), 700);
+        let r = s.rules().unwrap();
+        assert_eq!(r.len(), 1);
+        s.delete_rule(r[0].0).unwrap();
+        drop(s);
+        // reabrir não ressemeia
+        let s = Store::open(&path).unwrap();
+        assert!(s.rules().unwrap().is_empty());
+        drop(s);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn alert_log_list_and_purge() {
+        let s = Store::memory().unwrap();
+        let dia = 86_400;
+        let agora = 100 * dia;
+        s.log_alert(agora - 8 * dia, "bug", "velho").unwrap();
+        s.log_alert(agora - dia, "bug", &"x".repeat(200)).unwrap();
+        let l = s.alerts(10).unwrap();
+        assert_eq!(l.len(), 2);
+        assert_eq!(l[0].0, agora - dia); // mais recente primeiro
+        assert_eq!(l[0].2.chars().count(), 80);
+        assert_eq!(s.alerts(1).unwrap().len(), 1);
+        assert_eq!(s.purge_alerts(7, agora).unwrap(), 1);
+        let l = s.alerts(10).unwrap();
+        assert_eq!(l.len(), 1);
+        assert_eq!(l[0].0, agora - dia);
+    }
+
+    #[test]
+    fn monitor_settings_defaults_and_invalid() {
+        let s = Store::memory().unwrap();
+        assert_eq!(s.dedupe_min().unwrap(), 30);
+        assert_eq!(s.alertas_hora().unwrap(), 10);
+        assert_eq!(s.retencao_dias().unwrap(), 7);
+        assert_eq!(s.silencio_ini().unwrap(), "");
+        assert_eq!(s.silencio_fim().unwrap(), "");
+        s.set_dedupe_min(5).unwrap();
+        s.set_alertas_hora(20).unwrap();
+        s.set_retencao_dias(14).unwrap();
+        s.set_silencio("22:00", "07:00").unwrap();
+        assert_eq!(s.dedupe_min().unwrap(), 5);
+        assert_eq!(s.alertas_hora().unwrap(), 20);
+        assert_eq!(s.retencao_dias().unwrap(), 14);
+        assert_eq!(s.silencio_ini().unwrap(), "22:00");
+        assert_eq!(s.silencio_fim().unwrap(), "07:00");
+        assert!(s.set_dedupe_min(0).is_err());
+        assert!(s.set_alertas_hora(1001).is_err());
+        assert!(s.set_retencao_dias(0).is_err());
+        assert!(s.set_silencio("25:00", "").is_err());
+        assert!(s.set_silencio("7:00", "").is_err());
+        s.set_silencio("", "").unwrap();
+        assert_eq!(s.silencio_ini().unwrap(), "");
+        // lixo no banco cai no padrão
+        s.set("dedupe_min", "abc").unwrap();
+        s.set("alertas_hora", "0").unwrap();
+        s.set("retencao_dias", "-3").unwrap();
+        s.set("silencio_ini", "lixo").unwrap();
+        assert_eq!(s.dedupe_min().unwrap(), 30);
+        assert_eq!(s.alertas_hora().unwrap(), 10);
+        assert_eq!(s.retencao_dias().unwrap(), 7);
+        assert_eq!(s.silencio_ini().unwrap(), "");
     }
 
     #[test]

@@ -57,6 +57,13 @@ pub struct AppState {
     pub client: Mutex<Option<std::sync::Arc<whatsapp_rust::Client>>>,
     /// Painel servido por HTTPS: cookie ganha `Secure`.
     pub https: bool,
+    /// Última amostra de RAM/CPU (RF9 da spec 005) e o instante de início (uptime).
+    pub metricas: crate::metrics::Slot,
+    pub boot: std::time::Instant,
+    /// Spec 003: detector compilado (trocado sem reiniciar), dedupe e limite por hora.
+    pub detector: std::sync::RwLock<std::sync::Arc<crate::detector::Detector>>,
+    pub dedupe: Mutex<crate::alerta::Dedupe>,
+    pub limite: Mutex<crate::alerta::Limite>,
 }
 
 fn local_tm(secs: u64) -> libc::tm {
@@ -101,7 +108,7 @@ pub fn now() -> u64 {
 
 impl AppState {
     pub fn new(store: Store, roles: ChatRoles, https: bool) -> Self {
-        AppState {
+        let st = AppState {
             store,
             roles,
             sessions: Sessions::new(std::time::Duration::from_secs(12 * 3600)),
@@ -115,7 +122,43 @@ impl AppState {
             recent: Mutex::default(),
             client: Mutex::default(),
             https,
+            metricas: Mutex::default(),
+            boot: std::time::Instant::now(),
+            detector: Default::default(),
+            dedupe: Mutex::new(crate::alerta::Dedupe::novo()),
+            limite: Mutex::default(),
+        };
+        // Regra salva inválida não derruba o boot: detector vazio e aviso no log.
+        if let Err(e) = st.recarrega_detector() {
+            tracing::warn!("detector vazio: {e}");
         }
+        st
+    }
+
+    /// Recompila regras e ignorar do banco e troca o detector. Chamar após toda escrita no painel.
+    pub fn recarrega_detector(&self) -> Result<(), String> {
+        let regras: Vec<_> = self
+            .store
+            .rules()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|(id, nome, padrao, ativa)| crate::detector::Regra {
+                id,
+                nome,
+                padrao,
+                ativa,
+            })
+            .collect();
+        let ign: Vec<String> = self
+            .store
+            .ignores()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|(_, p)| p)
+            .collect();
+        let d = crate::detector::Detector::novo(&regras, &ign)?;
+        *self.detector.write().unwrap_or_else(|e| e.into_inner()) = std::sync::Arc::new(d);
+        Ok(())
     }
 
     pub fn lock_pairing(&self) -> std::sync::MutexGuard<'_, Pairing> {

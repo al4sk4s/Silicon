@@ -29,11 +29,21 @@ terminal. Quer-se um visual limpo (tons de cinza, botões simples) e o pareament
 - RF7 Primeiro acesso: sem senha gravada, `/login` mostra "escolha a senha" (duas caixas). Só aceita de loopback; grava o hash e já loga. O `set-password` continua valendo.
 - RF8 `/chats` recarrega sozinho a cada 5 s (via GET), só com a busca vazia e sem campo em foco, para refletir `/c allow|deny`.
 
+- RF9 **Métricas do sistema na aba Status** (emenda 2026-11-20): o Status mostra o consumo do
+  próprio processo `silicon`: **RAM (RSS)**, **CPU %** (média desde a leitura anterior), **threads**,
+  **uptime**, mais a RAM livre do sistema (`MemAvailable`). Fonte: `/proc/self/{status,stat}` e
+  `/proc/meminfo` (sem dependência nova, P7). Fragmento HTML `/metrics` atrás de login, `no-store`,
+  consultado a cada 5 s pela página (sem JS, mostra o valor do carregamento). Só números; nada de
+  conteúdo de mensagem, JID ou caminho (P4/P6). Fora do Linux ou `/proc` ilegível: mostra "indisponível".
+
 ## Fora do escopo
 Tema escuro, i18n, edição de configurações além do que já existe, desparear pelo painel.
 
 ## Critérios de aceite
 - Teste: `/pair/state` exige login; `POST /pair` com número inválido → 400; QR vira SVG.
 - Teste: Origin errado em `POST /pair` → recusado.
+- Teste: `/metrics` exige login; parser de `/proc` (entradas fixas) dá RSS/ticks/threads; CPU % com dois
+  pontos conhecidos; `/proc` ausente → "indisponível".
+- Manual: Status mostra RAM e CPU plausíveis (comparar com `ps -o rss,pcpu -C silicon`).
 - [WA] com sessão nova: QR aparece, troca, parear funciona; "Tentar de novo" gera QR novo;
   número digitado gera código aceito pelo celular.
