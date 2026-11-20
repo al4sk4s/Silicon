@@ -61,7 +61,7 @@ Silicon
 - **Rust** (async com `tokio`) em cima da [`whatsapp-rust`](https://github.com/oxidezap/whatsapp-rust), fixada em um commit específico
 - **SQLite** para sessão e configuração (arquivos separados)
 - **axum** para o painel, com senha `argon2` e HTTPS autoassinado quando sair do loopback
-- **ffmpeg** (com `libwebp`) para converter as figurinhas
+- **ffmpeg** (com o encoder `libwebp_anim`; o bot checa no boot) para converter as figurinhas. Mídia de visualização única (desligada por padrão; ligue no painel e avise o grupo) é convertida só em memória
 - **systemd** para rodar 24/7 no servidor
 
 ## 🚀 Como vai ser usar
@@ -116,6 +116,7 @@ sudo systemctl enable --now silicon
   defina `SILICON_PAIR_PHONE=<só dígitos, com DDI>` no mesmo comando.
 - **Reinicie depois de `set-password`** (`sudo systemctl restart silicon`): o bind é decidido na
   partida. Sem senha, o painel fica só em `127.0.0.1`.
+- **Papel de DM por "JID manual" no painel usa a forma `…@lid`** (ex.: `123456789@lid`), não o número.
 - **Painel na LAN usa HTTPS autoassinado:** o navegador vai avisar. Confira o fingerprint
   SHA-256 impresso no terminal/journal antes de aceitar.
 - **Saiu com código 2?** O celular encerrou a sessão. O systemd não reinicia nesse caso: refaça

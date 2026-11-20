@@ -13,8 +13,8 @@ Testes sintéticos. Depende: 001/T4.
 injetado, responde uma vez e silencia (P8). Testes. Depende: —
 
 **T3. [x] Conversão** · módulo — `src/stickers/convert.rs`: `to_static` (q75→50→30, ≤ 100.000 B) e
-`to_animated` (escada de 6 tentativas, ≤ 500.000 B); ffmpeg por pipe, `kill_on_drop`, timeout
-(5/15 s), `Semaphore(1)`, correção do RIFF size, `+faststart` obrigatório no pipe. Testes lavfi
+`to_animated` (escada de 6 tentativas, ≤ 500.000 B); imagem por pipe, vídeo por memfd, `kill_on_drop`, timeout
+(5/15 s), `Semaphore(1)`, correção do RIFF size. Testes lavfi
 (`#[ignore]` sem ffmpeg). Depende: —
 
 **T4. [x] Settings + painel** · módulo — chaves `viewonce_enabled` (0) e `sticker_per_min` (3);
@@ -26,7 +26,7 @@ toggle com aviso "avise o grupo antes" (P6). Depende: 001/T5, 001/T7.
 **T6. [x] Re-export de `MediaType`/`DownloadLimits`** · pesquisa — confirmar caminhos no commit
 `eeb24da`. Depende: —
 
-**T7. [x] `memfd` para vídeo viewOnce** · módulo — `src/stickers/memfd.rs` + crate `libc`
+**T7. [x] `memfd` para todo vídeo/GIF** · módulo — `src/stickers/memfd.rs` + crate `libc`
 (Linux-only): `memfd_create` sem CLOEXEC, escreve, seek 0, passa `/proc/self/fd/N` ao ffmpeg,
 fecha após `wait`. Teste: o fd some após o uso; nada novo no disco. Depende: T3.
 
@@ -39,7 +39,7 @@ fecha após `wait`. Teste: o fd some após o uso; nada novo no disco. Depende: T
 quote) → `ctx.send_message`. Gancho no ramo `Command` do dispatch. Mensagens curtas de erro.
 Depende: T1–T6, T7.
 
-**T9. [x] Teste de zero persistência** · módulo — `tests/viewonce_nopersist.rs`: lista recursiva
+**T9. [x] Teste de zero persistência** · módulo — (feito em `src/stickers/mod.rs`: cobre a conversão; o download foi conferido lendo a lib em `eeb24da`, só usa disco em testes; log conferido por inspeção: `push_event` recebe só tipo e JID) `tests/viewonce_nopersist.rs`: lista recursiva
 de `data_dir`, `temp_dir()` e `/dev/shm` antes/depois de `handle_bytes(view_once = true)`
 (imagem e vídeo); log sem bytes. Depende: T7, T8.
 
