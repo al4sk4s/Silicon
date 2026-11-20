@@ -88,7 +88,7 @@ imagem usa pipe. `MediaType`/`DownloadLimits`: `whatsapp_rust::download::{MediaT
 "Responda uma imagem ou vídeo com /s" · "Mídia pesada demais" · "Formato não suportado" ·
 "Calma, muitas figurinhas agora" · "Não consegui baixar". Rate limit: responde uma vez e fica
 mudo até a janela passar (P8).
-"Calma…" e o uso do `/s` têm 8 variantes cada, sorteadas (pedido do dono, 20/11/2026); as demais são fixas.
+Todas as respostas de erro/aviso do bot têm 8 variantes sorteadas por `vary()` em `reply` (pedido do dono, 20/11/2026); o texto da 1ª é o canônico dos testes.
 
 ## Testes (`cargo test`, sem rede)
 - `parse_cmd`: 3 aliases, caixa, texto depois, falsos positivos.

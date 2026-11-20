@@ -39,6 +39,107 @@ const USO_S: &[&str] = &[
     "Ué, responda uma imagem ou vídeo com /s que eu faço a figurinha",
 ];
 
+const BAIXAR: &[&str] = &[
+    "Não consegui baixar",
+    "Deu ruim no download dessa mídia",
+    "Não rolou baixar isso, tenta de novo?",
+    "Falhei ao baixar a mídia, manda outra vez",
+    "O download falhou, tenta de novo daqui a pouco",
+    "Não consegui pegar essa mídia",
+    "Travou na hora de baixar, tenta de novo",
+    "Não deu pra baixar, reenvia a mídia",
+];
+const PESADA: &[&str] = &[
+    "Mídia pesada demais",
+    "Essa mídia tá pesada demais pra mim",
+    "Arquivo grande demais, manda um menor",
+    "Pesado demais! Tenta um arquivo menor",
+    "Não aguento esse tamanho, manda algo mais leve",
+    "Mídia grande demais pra virar figurinha",
+    "Muito pesada, tenta uma mais leve",
+    "Esse arquivo passou do limite de tamanho",
+];
+const ENVIAR: &[&str] = &[
+    "Não consegui enviar",
+    "Não consegui mandar a figurinha",
+    "Falhou o envio, tenta de novo",
+    "A figurinha não saiu, tenta outra vez",
+    "Deu erro ao enviar, tenta de novo",
+    "Travei na hora de mandar, repete o comando",
+    "Não rolou enviar, tenta mais uma vez",
+    "O envio falhou, tenta de novo daqui a pouco",
+];
+const NAO_SUPORTADA: &[&str] = &[
+    "Figurinha não suportada",
+    "Esse tipo de figurinha eu não consigo editar",
+    "Não consigo renomear essa figurinha",
+    "Figurinha de um formato que não suporto",
+    "Essa figurinha não dá pra renomear",
+    "Não aceito esse tipo de figurinha",
+    "Esse formato de figurinha não é suportado",
+    "Não sei lidar com essa figurinha",
+];
+const VIEWONCE: &[&str] = &[
+    "Visualização única não é suportada",
+    "Não consigo com mídia de visualização única",
+    "Visualização única não rola por aqui",
+    "Mídia de visualização única eu não pego",
+    "Não dá pra usar visualização única",
+    "Visualização única não funciona comigo",
+    "Mande uma mídia normal, sem visualização única",
+    "Não suporto visualização única",
+];
+const FFMPEG: &[&str] = &[
+    "ffmpeg ausente",
+    "Estou sem o ffmpeg, não consigo converter",
+    "Falta o ffmpeg aqui, avise o dono",
+    "Sem ffmpeg não tem figurinha, avise o dono",
+    "O ffmpeg não está disponível agora",
+    "Não achei o ffmpeg, chama o dono",
+    "Conversor fora do ar (ffmpeg), avise o dono",
+    "Sem ffmpeg por aqui, fala com o dono",
+];
+const RENAME_USO_V: &[&str] = &[
+    RENAME_USO,
+    "Responda uma figurinha com /rename nome / autor, tá?",
+    "Cite a figurinha e mande /rename nome / autor",
+    "Faltou citar a figurinha: /rename nome / autor",
+    "Pra renomear, responda uma figurinha com /rename nome / autor",
+    "Use assim, respondendo a figurinha: /rename nome / autor",
+    "Me diga o novo nome e autor: /rename nome / autor, respondendo a figurinha",
+    "Responda a figurinha com /rename nome / autor que eu troco",
+];
+const LIMITE_CAMPO: &[&str] = &[
+    "Nome e autor aceitam até 64 caracteres",
+    "Máximo de 64 caracteres no nome e no autor",
+    "Tá grande! Nome e autor vão até 64 caracteres",
+    "Encurta aí: nome e autor têm limite de 64 caracteres",
+    "Passou de 64 caracteres no nome ou no autor",
+    "Nome e autor não podem passar de 64 caracteres",
+    "Limite de 64 caracteres por campo, reduz um pouco",
+    "Muito longo: até 64 caracteres no nome e no autor",
+];
+const GRUPOS: &[&[&str]] = &[
+    CALMA,
+    USO_S,
+    BAIXAR,
+    PESADA,
+    ENVIAR,
+    NAO_SUPORTADA,
+    VIEWONCE,
+    FFMPEG,
+    RENAME_USO_V,
+    LIMITE_CAMPO,
+];
+
+/// Troca a mensagem por uma variante sorteada do mesmo grupo; sem grupo, devolve como veio.
+fn vary(t: &str) -> &str {
+    GRUPOS
+        .iter()
+        .find(|g| g.contains(&t))
+        .map_or(t, |g| variante(g))
+}
+
 fn variante(opcoes: &'static [&'static str]) -> &'static str {
     use rand::Rng;
     opcoes[rand::rng().random_range(0..opcoes.len())]
@@ -123,7 +224,7 @@ pub async fn make(kind: Kind, bytes: &[u8]) -> Result<Vec<u8>, &'static str> {
 }
 
 async fn reply(ctx: &MessageContext, sent: &crate::wa::Sent, t: &str) {
-    if let Ok(r) = ctx.reply_quoting(t).await {
+    if let Ok(r) = ctx.reply_quoting(vary(t)).await {
         sent.add(r.message_id.as_str());
     }
 }
@@ -312,6 +413,14 @@ mod tests {
     fn variantes_nao_vazias() {
         assert!(super::CALMA.len() >= 5 && super::USO_S.len() >= 5);
         assert!(super::USO_S.iter().all(|t| t.contains("/s")));
+        assert!(super::GRUPOS.iter().all(|g| g.len() >= 8));
+        assert!(super::LIMITE_CAMPO.iter().all(|t| t.contains("64")));
+        assert!(
+            super::RENAME_USO_V
+                .iter()
+                .all(|t| t.contains("/rename nome / autor"))
+        );
+        assert!(super::GRUPOS.contains(&super::CALMA));
         assert!(super::CALMA.contains(&super::variante(super::CALMA)));
     }
 
