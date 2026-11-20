@@ -57,6 +57,9 @@ pub struct AppState {
     pub client: Mutex<Option<std::sync::Arc<whatsapp_rust::Client>>>,
     /// Painel servido por HTTPS: cookie ganha `Secure`.
     pub https: bool,
+    /// Última amostra de RAM/CPU (RF9 da spec 005) e o instante de início (uptime).
+    pub metricas: crate::metrics::Slot,
+    pub boot: std::time::Instant,
 }
 
 fn local_tm(secs: u64) -> libc::tm {
@@ -115,6 +118,8 @@ impl AppState {
             recent: Mutex::default(),
             client: Mutex::default(),
             https,
+            metricas: Mutex::default(),
+            boot: std::time::Instant::now(),
         }
     }
 

@@ -2,6 +2,7 @@ mod auth;
 mod config;
 mod dispatch;
 mod lock;
+mod metrics;
 mod panel;
 mod roles;
 mod state;

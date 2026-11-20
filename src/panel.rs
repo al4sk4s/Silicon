@@ -62,6 +62,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/settings", get(settings_get).post(settings_post))
         .route("/pair", get(pair_get).post(pair_post))
         .route("/pair/state", get(pair_state))
+        .route("/metrics", get(metrics_get))
         .layer(middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
 }
@@ -259,6 +260,14 @@ async fn logout(State(st): S, headers: HeaderMap) -> Response {
     r
 }
 
+fn metrics_fragment(st: &AppState) -> String {
+    crate::metrics::texto(crate::metrics::atualizar(&st.metricas), st.boot.elapsed())
+}
+
+async fn metrics_get(State(st): S) -> Html<String> {
+    Html(metrics_fragment(&st))
+}
+
 async fn index(State(st): S) -> Html<String> {
     let (connected, number) = {
         let s = st.status.lock().unwrap_or_else(|e| e.into_inner());
@@ -283,10 +292,12 @@ async fn index(State(st): S) -> Html<String> {
     Html(page(
         "Status",
         &format!(
-            "<p>Conectado: {}</p><p>Número: {}</p><h2>Últimos eventos</h2>\
-             <table><tr><th>Hora</th><th>Tipo</th><th>JID</th></tr>{rows}</table>",
+            "<p>Conectado: {}</p><p>Número: {}</p><p id=\"m\">{}</p><h2>Últimos eventos</h2>\
+             <table><tr><th>Hora</th><th>Tipo</th><th>JID</th></tr>{rows}</table>\
+             <script>setInterval(async()=>{{try{{const r=await fetch('/metrics');if(r.redirected){{location.reload();return}}m.innerHTML=await r.text()}}catch(e){{}}}},5000)</script>",
             if connected { "sim" } else { "não" },
             esc(number.as_deref().unwrap_or("não pareado")),
+            metrics_fragment(&st),
         ),
     ))
 }
@@ -952,6 +963,26 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn metrics_exige_login_e_mostra_ram() {
+        let (app, st) = app();
+        let get = |c: Option<&str>| {
+            let mut b = Request::get("/metrics").header("host", "localhost");
+            if let Some(c) = c {
+                b = b.header("cookie", format!("silicon_session={c}"));
+            }
+            b.body(Body::empty()).unwrap()
+        };
+        let r = app.clone().oneshot(get(None)).await.unwrap();
+        assert_eq!(r.status(), StatusCode::SEE_OTHER);
+        let tok = st.sessions.create();
+        let r = app.oneshot(get(Some(&tok))).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(r.headers()[header::CACHE_CONTROL], "no-store");
+        let b = axum::body::to_bytes(r.into_body(), 4096).await.unwrap();
+        assert!(String::from_utf8_lossy(&b).contains("RAM"));
     }
 
     #[tokio::test]
