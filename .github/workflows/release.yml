@@ -1,0 +1,33 @@
+name: release
+# Empurre uma tag `vX.Y.Z` para publicar os binários (spec 006).
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  linux:
+    runs-on: ubuntu-22.04 # glibc mais antiga = roda em mais distros
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked
+      - name: Empacota
+        run: |
+          mkdir dist
+          cp target/release/silicon dist/silicon-linux-x86_64
+          # AppImage: AppDir mínima com o binário como AppRun (app de terminal).
+          mkdir -p AppDir/usr/bin
+          cp target/release/silicon AppDir/usr/bin/silicon
+          ln -s usr/bin/silicon AppDir/AppRun
+          printf '[Desktop Entry]\nType=Application\nName=Silicon\nExec=silicon\nIcon=silicon\nCategories=Network;\nTerminal=true\n' > AppDir/silicon.desktop
+          # ícone mínimo (PNG 1x1) exigido pelo appimagetool
+          printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAHnOcQAAAAABJRU5ErkJggg==' | base64 -d > AppDir/silicon.png
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir dist/silicon-x86_64.AppImage
+          cd dist && sha256sum * > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

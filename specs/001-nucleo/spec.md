@@ -20,7 +20,7 @@ no PC servidor; a config é feita de outro lugar (notebook) pelo painel.
 - RF3 Sessão em SQLite fora do repositório (caminho configurável), permissão `0600`.
 - RF4 Papéis por chat (JID): `comando`, `monitorado`, `alerta`. Sem papel = ignorado.
 - RF5 Chat sem papel é descartado **antes** de parse, download ou resposta (P2).
-- RF6 Só o **dono** (JID configurado) usa comandos de admin; estar em `comando` não dá admin (P3).
+- RF6 Só o **dono** (JID configurado) usa comandos de admin; estar em `comando` não dá admin (P3). O JID do dono é comparado sem o sufixo de dispositivo (`:NN`), pois o `sender` do dono chega como `<lid>:80@lid`.
 - RF7 Painel local: lista chats/grupos do WhatsApp e permite atribuir papéis; mostra status;
   mostra log recente sem conteúdo de mensagem.
 - RF8 Atraso configurável (padrão 1–2 s, aleatório) antes de toda resposta (P8).
@@ -30,8 +30,9 @@ no PC servidor; a config é feita de outro lugar (notebook) pelo painel.
 - RF12 Papéis são ligados ao **JID** do chat (nunca ao nome): renomear o grupo não quebra.
   O nome só aparece como rótulo, atualizado a partir da lib.
 - RF13 Habilitar quem pode usar comandos: o dono dá o papel `comando` a um **grupo** ou a
-  uma **pessoa** (chat 1:1), pelo painel **ou** por mensagem do dono no próprio chat
-  (`/permitir`, `/bloquear`). Só o dono executa esses dois comandos (P3).
+  uma **pessoa** (chat 1:1) **somente pelo painel** (decisão do dono, 19/11/2026). Chat sem
+  papel é descartado antes do parse (P2), inclusive mensagem do dono: `/permitir` e
+  `/bloquear` por mensagem **não existem** nesta spec (pode virar emenda futura da P2).
 
 ## Não funcionais
 - Painel acessível **só na LAN**, com **senha** (P5): bind configurável (padrão

@@ -1,12 +1,10 @@
 # Constituição do Silicon
 
-> Versão 0.2.0 (RASCUNHO) · 2026-11-19 · Autor: Al4sk4s
-> 0.2.0: P1 ganha exceção (alerta ao dono); P2 ganha papéis; P5 libera LAN com senha.
-> Rascunho tirado da conversa de origem (`docs/contexto.md`). **Ainda não ratificada**:
-> será ratificada ao fechar a fase de planejamento. Uma spec, plano ou código que
-> contrarie a constituição está errado — quem muda é a spec/plano/código, não a regra.
-> Mudar regra: discutir com o dono e subir a versão (MAJOR = remove/inverte ·
-> MINOR = adiciona · PATCH = só texto).
+> Versão 1.1.0 · Ratificada em 2026-11-19 · Emenda 1.1.0 em 2026-11-20 · Autor: Al4sk4s
+> 1.1.0: P1/P2 ganham a exceção "mensagens do dono" (spec 004). 1.0.0: ratificada. (0.2.0: P1 ganha exceção do alerta ao dono; P2 ganha papéis; P5 libera LAN com senha.)
+> Uma spec, plano ou código que contrarie a constituição está errado — quem muda é a
+> spec/plano/código, não a regra. Mudar regra: discutir com o dono e subir a versão
+> (MAJOR = remove/inverte · MINOR = adiciona · PATCH = só texto).
 
 ## O que é o Silicon
 Bot de WhatsApp em Rust, de terminal, de uso pessoal, para um grupo pequeno de conhecidos.
@@ -17,15 +15,21 @@ Comandos de figurinha primeiro; outros depois, via spec.
 ### P1 — Só responde, nunca inicia
 O bot nunca manda mensagem por conta própria nem para quem não o chamou. Só responde a um
 comando vindo de chat permitido. Reduz risco de ban e de incômodo.
-**Única exceção:** o **alerta ao dono** (spec 003): o bot pode enviar mensagem por conta
+**Exceções:** (a) o **alerta ao dono** (spec 003): o bot pode enviar mensagem por conta
 própria **somente** para o chat de papel `alerta`, que é do dono. Nunca para terceiros,
-nunca para o grupo monitorado. Ligações automáticas estão proibidas.
+nunca para o grupo monitorado. Ligações automáticas estão proibidas. (b) **Comando do dono
+em qualquer chat** (spec 004): o bot responde a um comando vindo **do dono**, mesmo em chat
+sem papel; continua sendo resposta a quem o chamou, nunca iniciativa.
 
 ### P2 — Whitelist primeiro
 Todo chat tem um papel: `comando` (usa comandos e recebe resposta), `monitorado` (o bot só
 **lê**, nunca responde) ou `alerta` (destino dos alertas ao dono). Mensagens de chats **sem
 papel** são ignoradas **antes** de qualquer parse, download ou resposta. Padrão seguro:
 nenhum papel atribuído = bot mudo.
+**Exceção (1.1.0):** em chat **sem papel**, só uma mensagem **do dono** (P3) passa, e só se
+começar com `/`; qualquer outra coisa é ignorada sem leitura. Chat `monitorado`/`alerta`
+nunca recebe resposta, nem do dono. O comando do dono em chat sem papel **não libera
+ninguém** além dele (só `/c allow` atribui papel).
 
 ### P3 — Só o dono administra
 Comandos de admin (permitir/bloquear chat, config) só valem se vierem do dono. Estar na

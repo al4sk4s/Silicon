@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🪨 Silicon
+<img src="assets/silicon.svg" alt="Ícone do Silicon" width="128">
+
+# Silicon
 
 **Um bot de WhatsApp em Rust, de terminal, feito para morar no seu servidor.**
 Figurinhas na hora, alerta de promoção "bugada" e um painel simples para mandar em tudo.
@@ -13,9 +15,10 @@ Figurinhas na hora, alerta de promoção "bugada" e um painel simples para manda
 
 ---
 
-> **Em que pé estamos:** o projeto está na fase de **especificação**. Já existem a
-> constituição, três specs com plano e tarefas, mas **ainda não há código**. Este README
-> descreve o que vamos construir, não o que já funciona.
+> **Em que pé estamos:** o **núcleo (spec 001)** já está implementado e validado no
+> WhatsApp real (login, painel, papéis, reconexão). Os **comandos de figurinha (002)** e o
+> **alerta de bug (003)** ainda são só especificação: este README descreve o que vamos
+> construir, não o que já funciona.
 
 ## ✨ O que o Silicon vai fazer
 
@@ -58,7 +61,7 @@ Silicon
 - **Rust** (async com `tokio`) em cima da [`whatsapp-rust`](https://github.com/oxidezap/whatsapp-rust), fixada em um commit específico
 - **SQLite** para sessão e configuração (arquivos separados)
 - **axum** para o painel, com senha `argon2` e HTTPS autoassinado quando sair do loopback
-- **ffmpeg** (com `libwebp`) para converter as figurinhas
+- **ffmpeg** (com o encoder `libwebp_anim`; o bot checa no boot) para converter as figurinhas. Mídia de visualização única (desligada por padrão; ligue no painel e avise o grupo) é convertida só em memória
 - **systemd** para rodar 24/7 no servidor
 
 ## 🚀 Como vai ser usar
@@ -66,8 +69,7 @@ Silicon
 > Isto é o plano; ainda não dá para rodar.
 
 ```bash
-# 1. defina a senha do painel
-silicon set-password
+silicon set-password   # ou pule: o 1º acesso ao painel (loopback) pede a senha na tela
 
 # 2. suba o bot e leia o QR Code uma única vez
 silicon
@@ -84,6 +86,48 @@ No WhatsApp, no chat que você liberou:
 /permitir     (só você: libera o chat atual)
 /bloquear     (só você: tira a permissão)
 ```
+
+## 🖥️ Deploy (systemd)
+
+Passo a passo para rodar 24/7 no servidor (unit em [`deploy/silicon.service`](deploy/silicon.service)):
+
+```bash
+# 1. usuário e pasta de dados
+sudo useradd --system --home /var/lib/silicon --shell /usr/bin/nologin silicon
+sudo install -d -o silicon -g silicon -m 0700 /var/lib/silicon
+
+# 2. binário e unit
+sudo install -m 0755 target/release/silicon /usr/local/bin/silicon
+sudo install -m 0644 deploy/silicon.service /etc/systemd/system/silicon.service
+sudo systemctl daemon-reload
+
+# 3. senha do painel e pareamento: no terminal, FORA do systemd
+sudo -u silicon env SILICON_DATA_DIR=/var/lib/silicon silicon set-password
+sudo -u silicon env SILICON_DATA_DIR=/var/lib/silicon silicon
+
+# 4. depois de parear, Ctrl+C e ligue o serviço
+sudo systemctl enable --now silicon
+```
+
+- **Binário pronto:** ao empurrar uma tag `vX.Y.Z`, o GitHub Actions publica no Release o
+  `silicon-linux-x86_64`, o `silicon-x86_64.AppImage` e o `SHA256SUMS` (spec 006). Use no lugar
+  de `target/release/silicon` no passo 2. Windows `.exe` não é suportado (código Unix). O `ffmpeg` continua sendo dependência do sistema.
+- **Pareamento pelo painel (spec 005):** em `/pair` o QR aparece em tempo real, com o código de
+  pareamento, campo de número (`5511999998888`) e "Tentar de novo". Só a LAN, com senha (P5).
+- **Comandos do dono (spec 004):** `/s` funciona em qualquer chat para você; `/c allow`, `/c deny`
+  e `/c status` (ou `/comandos`) liberam/removem o chat atual (o grupo todo) e o bot reage com ✅.
+- **Pareie pelo painel (`/pair`) ou no terminal:** o QR/código só são impressos quando o stdout é um
+  terminal (nunca no journald); pelo painel funcionam também sob o systemd. Rode sempre como usuário `silicon` e com o **mesmo** `SILICON_DATA_DIR`; como outro
+  usuário, os arquivos criados não seriam abertos pelo daemon. Para usar pair code em vez do QR,
+  defina `SILICON_PAIR_PHONE=<só dígitos, com DDI>` no mesmo comando.
+- **Atrás de proxy reverso?** Se o proxy mantém o `Host` original, nada a fazer. Se ele troca o `Host` pelo do upstream, o login dá 403 (checagem de `Origin`): defina `SILICON_PROXY_HOST=<host público>` no serviço. Proxy só na LAN, nunca exposto à internet (P5).
+- **Reinicie depois de `set-password`** (`sudo systemctl restart silicon`): o bind é decidido na
+  partida. Sem senha, o painel fica só em `127.0.0.1`.
+- **Papel de DM por "JID manual" no painel usa a forma `…@lid`** (ex.: `123456789@lid`), não o número.
+- **Painel na LAN usa HTTPS autoassinado:** o navegador vai avisar. Confira o fingerprint
+  SHA-256 impresso no terminal/journal antes de aceitar.
+- **Saiu com código 2?** O celular encerrou a sessão. O systemd não reinicia nesse caso: refaça
+  o passo 3 e depois `sudo systemctl start silicon`.
 
 ## ⚠️ Avisos importantes
 
