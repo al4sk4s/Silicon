@@ -16,8 +16,21 @@ pub async fn probe() {
         .kill_on_drop(true)
         .output();
     let ok = match tokio::time::timeout(Duration::from_secs(5), run).await {
-        Ok(Ok(o)) => o.status.success() && has_encoder(&String::from_utf8_lossy(&o.stdout)),
-        _ => false,
+        Ok(Ok(o)) => {
+            let found = has_encoder(&String::from_utf8_lossy(&o.stdout));
+            if !(o.status.success() && found) {
+                tracing::warn!(status = ?o.status, found, bytes = o.stdout.len(), "probe do ffmpeg");
+            }
+            o.status.success() && found
+        }
+        Ok(Err(e)) => {
+            tracing::warn!("probe do ffmpeg: não executou: {e}");
+            false
+        }
+        Err(_) => {
+            tracing::warn!("probe do ffmpeg: timeout");
+            false
+        }
     };
     FFMPEG_OK.store(ok, Ordering::Relaxed);
     if ok {

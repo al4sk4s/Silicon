@@ -90,6 +90,10 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
         limit::Verdict::DenyFirst => return reply("Calma, muitas figurinhas agora").await,
         limit::Verdict::DenySilent => return,
     }
+    // o probe do boot falhou sem causa achada (intermitente); tenta de novo antes de desistir
+    if !check::ffmpeg_ok() {
+        check::probe().await;
+    }
     if !check::ffmpeg_ok() {
         return reply("ffmpeg ausente").await;
     }
