@@ -5,6 +5,7 @@ use crate::roles::Role;
 use crate::state::AppState;
 use rand::Rng;
 use std::collections::HashSet;
+use std::io::IsTerminal;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use whatsapp_rust::pair_code::PairCodeOptions;
@@ -212,8 +213,18 @@ pub async fn run(st: Arc<AppState>, session_db: &str) -> Result<(), Box<dyn std:
         let phone = st.lock_pairing().phone.clone();
         let bot = build(&st, &sent, session_db, phone).await?;
         let client = bot.client();
-        tokio::select! {
-            reason = bot.run() => {
+        let ended = tokio::select! {
+            reason = bot.run() => Some(reason),
+            _ = st.restart.notified() => {
+                let _ = client.shutdown().await;
+                None
+            }
+        };
+        if let Some(reason) = ended {
+            // QRs esgotados: a lib encerra a sessão sozinha; espera o "tentar de novo" do painel.
+            if st.lock_pairing().exhausted {
+                st.restart.notified().await;
+            } else {
                 // Fim sem pedido de shutdown (ex.: reconexão esgotada): erro, para o systemd reiniciar.
                 // Logout já saiu com código 2 dentro de `on_logged_out`.
                 return match reason {
@@ -221,14 +232,11 @@ pub async fn run(st: Arc<AppState>, session_db: &str) -> Result<(), Box<dyn std:
                     other => Err(format!("bot terminou sem pedido de shutdown: {other:?}").into()),
                 };
             }
-            _ = st.restart.notified() => {
-                let _ = client.shutdown().await;
-                let mut p = st.lock_pairing();
-                p.qr = None;
-                p.code = None;
-                p.exhausted = false;
-            }
         }
+        let mut p = st.lock_pairing();
+        p.qr = None;
+        p.code = None;
+        p.exhausted = false;
     }
 }
 
@@ -264,12 +272,16 @@ async fn build(
         .on_qr_code(move |code, ttl| {
             let st = s_qr.clone();
             async move {
-                match qrcode::QrCode::new(code.as_bytes()) {
-                    Ok(q) => println!(
-                        "Escaneie o QR no WhatsApp (Aparelhos conectados):\n{}",
-                        q.render::<qrcode::render::unicode::Dense1x2>().build()
-                    ),
-                    Err(_) => eprintln!("Não consegui desenhar o QR."),
+                // Só no terminal: sob o systemd o stdout vai para o journald (P4).
+                if !std::io::stdout().is_terminal() {
+                } else {
+                    match qrcode::QrCode::new(code.as_bytes()) {
+                        Ok(q) => println!(
+                            "Escaneie o QR no WhatsApp (Aparelhos conectados):\n{}",
+                            q.render::<qrcode::render::unicode::Dense1x2>().build()
+                        ),
+                        Err(_) => eprintln!("Não consegui desenhar o QR."),
+                    }
                 }
                 // QR/código são credenciais temporárias: só em memória, nunca no log (P4).
                 let mut p = st.lock_pairing();
@@ -282,7 +294,9 @@ async fn build(
         .on_pair_code(move |code, _ttl| {
             let st = s_pc.clone();
             async move {
-                println!("Código de pareamento: {code}");
+                if std::io::stdout().is_terminal() {
+                    println!("Código de pareamento: {code}");
+                }
                 st.lock_pairing().code = Some(code);
             }
         })

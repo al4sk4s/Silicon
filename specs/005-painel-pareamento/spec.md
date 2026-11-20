@@ -1,6 +1,6 @@
 # Spec 005 — Painel novo e pareamento pelo painel
 
-Status: **aprovada pelo dono em 2026-11-20** (decisão 4: JS/CSS próprios permitidos) · Depende de: 001
+Status: **decisões aprovadas pelo dono em 2026-11-20; texto da spec a revisar** (decisão 4: JS/CSS próprios permitidos) · Depende de: 001
 
 ## Por quê
 O painel é cru: liberar grupos/contatos exige JID manual, e o login do WhatsApp só aparece no

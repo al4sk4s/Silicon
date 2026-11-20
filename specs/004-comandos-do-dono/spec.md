@@ -1,6 +1,6 @@
 # Spec 004 — Comandos do dono em qualquer chat
 
-Status: **aprovada pelo dono em 2026-11-20** (decisões 2 e 3) · Depende de: 001, 002 · Emenda: constituição 1.1.0
+Status: **decisões aprovadas pelo dono em 2026-11-20; texto da spec a revisar** (decisões 2 e 3) · Depende de: 001, 002 · Emenda: constituição 1.1.0
 
 ## Por quê
 Hoje é preciso abrir o painel e colar o JID para liberar um chat. O dono quer mandar `/s` em

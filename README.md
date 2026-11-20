@@ -117,8 +117,8 @@ sudo systemctl enable --now silicon
   pareamento, campo de número (`5511999998888`) e "Tentar de novo". Só a LAN, com senha (P5).
 - **Comandos do dono (spec 004):** `/s` funciona em qualquer chat para você; `/c allow`, `/c deny`
   e `/c status` (ou `/comandos`) liberam/removem o chat atual (o grupo todo) e o bot reage com ✅.
-- **Pareie no terminal, não pelo systemd:** sob o systemd o QR (e o pair code) iriam para o
-  journald. Rode sempre como usuário `silicon` e com o **mesmo** `SILICON_DATA_DIR`; como outro
+- **Pareie pelo painel (`/pair`) ou no terminal:** o QR/código só são impressos quando o stdout é um
+  terminal (nunca no journald); pelo painel funcionam também sob o systemd. Rode sempre como usuário `silicon` e com o **mesmo** `SILICON_DATA_DIR`; como outro
   usuário, os arquivos criados não seriam abertos pelo daemon. Para usar pair code em vez do QR,
   defina `SILICON_PAIR_PHONE=<só dígitos, com DDI>` no mesmo comando.
 - **Atrás de proxy reverso?** Se o proxy mantém o `Host` original, nada a fazer. Se ele troca o `Host` pelo do upstream, o login dá 403 (checagem de `Origin`): defina `SILICON_PROXY_HOST=<host público>` no serviço. Proxy só na LAN, nunca exposto à internet (P5).

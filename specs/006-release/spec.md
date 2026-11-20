@@ -1,6 +1,6 @@
 # Spec 006 — Release e binários (GitHub Actions)
 
-Status: **aprovada pelo dono em 2026-11-20** · Depende de: 001
+Status: **decisões aprovadas pelo dono em 2026-11-20; texto da spec a revisar** · Depende de: 001
 
 ## Por quê
 Facilitar o setup do daemon 24/7: baixar um binário pronto em vez de compilar no servidor.
