@@ -24,6 +24,9 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 sha2 = "0.11.1"
 # Só para memfd_create (T7); já está no Cargo.lock (MIT/Apache-2.0).
 libc = "0.2"
+# Spec 003: regras editáveis (regex, tempo linear) e texto sem acento. MIT/Apache-2.0.
+regex = "1.13.1"
+unicode-normalization = "0.1.26"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

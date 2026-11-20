@@ -4,20 +4,20 @@ Legenda: **[WA]** só com WhatsApp real · **módulo** = tarefa isolada em arqui
 **integração** = junta as peças. Build `-j1`. Pré-requisito: spec 001 pronta. Sem ligação, sem feature `voip`.
 
 ## Onda A — pura e paralela (arquivos diferentes, sem build entre si)
-**T1. Dependências** · módulo — `regex` 1.13.1 e `unicode-normalization` 0.1.26 no
+**T1. [x] Dependências** · módulo — `regex` 1.13.1 e `unicode-normalization` 0.1.26 no
 `Cargo.toml`. Depende: 001/T1.
 
-**T2. Detector** · módulo — `src/detector.rs`: `normaliza` (NFD, sem marcas, minúsculas),
+**T2. [x] Detector** · módulo — `src/detector.rs`: `normaliza` (NFD, sem marcas, minúsculas),
 `avalia`, lista de ignorar, `RegexBuilder` com `size_limit`/`dfa_size_limit`, regra padrão
 `\bbug(s|ad[oa]s?|ou|ar|ando|uei|zao|zinho|ue[im])?\b`. Testes: casa bug, bugs, bugado,
 BUGADA, bugados, bugou, bugar, bugando, buguei, bugzão, bugzinho; não casa debug, debugar,
 bugatti, ebuggy; ignorar vence; regra inválida recusada; desativada ignorada. Depende: T1.
 
-**T3. Alerta (puro)** · módulo — `src/alerta.rs`: `Dedupe` (hash de texto/1º link sem query,
+**T3. [x] Alerta (puro)** · módulo — `src/alerta.rs`: `Dedupe` (hash de texto/1º link sem query,
 janela 30 min), `Limite` (10/h), `em_silencio` (cruza meia-noite), `formata` (snapshot do
 formato com `@`). Testes. Depende: T1.
 
-**T4. Config v2** · módulo — `src/config.rs`: tabelas `rules` (com a regra "bug"), `ignore`,
+**T4. [x] Config v2** · módulo — `src/config.rs`: tabelas `rules` (com a regra "bug"), `ignore`,
 `alert_log` (resumo ≤ 80 chars, sem mídia), settings (`dedupe_min`, `alertas_hora`, silêncio,
 `retencao_dias`=7), CRUD e purge (partida + a cada hora). Testes. Depende: 001/T5.
 

@@ -1,5 +1,7 @@
+mod alerta;
 mod auth;
 mod config;
+mod detector;
 mod dispatch;
 mod lock;
 mod metrics;
