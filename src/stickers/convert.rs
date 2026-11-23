@@ -139,10 +139,71 @@ pub async fn to_static(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
     Err(ConvErr::TooBig)
 }
 
+/// Uma tentativa da escada. `Some(bytes)` se coube no teto; timeout conta como "não coube".
+async fn attempt(
+    path: String,
+    fps: u8,
+    q: u8,
+    filter: &'static str,
+) -> Result<Option<Vec<u8>>, ConvErr> {
+    let args = vec![
+        "-i".into(),
+        path,
+        "-an".into(),
+        "-t".into(),
+        "10".into(),
+        "-vf".into(),
+        format!("fps={fps},{filter}"),
+        "-c:v".into(),
+        "libwebp".into(),
+        "-lossless".into(),
+        "0".into(),
+        "-compression_level".into(),
+        "4".into(),
+        "-q:v".into(),
+        q.to_string(),
+        "-loop".into(),
+        "0".into(),
+    ];
+    match run(args, None, 25, "webp").await {
+        Err(Run::NoFfmpeg) => Err(ConvErr::NoFfmpeg),
+        Err(Run::Fail) => Err(ConvErr::Unsupported),
+        Err(Run::Timeout) => Ok(None),
+        Ok(out) => {
+            let out = fix_riff(out).ok_or(ConvErr::Unsupported)?;
+            Ok((out.len() <= ANIM_MAX).then_some(out))
+        }
+    }
+}
+
+/// Roda os degraus `idxs` ao mesmo tempo (o encoder WebP usa ~1 núcleo por processo).
+async fn round(
+    path: &str,
+    ladder: &'static [(u8, u8)],
+    filter: &'static str,
+    idxs: &[usize],
+) -> Result<Vec<Option<Vec<u8>>>, ConvErr> {
+    let tasks: Vec<_> = idxs
+        .iter()
+        .map(|&i| {
+            let (fps, q) = ladder[i];
+            tokio::spawn(attempt(path.to_string(), fps, q, filter))
+        })
+        .collect();
+    let mut out = Vec::new();
+    for t in tasks {
+        out.push(t.await.map_err(|_| ConvErr::NoFfmpeg)??);
+    }
+    Ok(out)
+}
+
 /// Vídeo/GIF -> WebP animado 512x512, <= 500.000 B. Entrada sempre por `memfd::MemFile`.
 /// Devolve também (fps, q) usados, para o log.
+/// Busca em até 2 rodadas de 3 ffmpeg em paralelo: sonda o topo, o meio e o fim da escada e,
+/// se o topo não coube, refina entre a sonda anterior e a primeira que coube (vale o degrau de
+/// melhor qualidade que coube, igual à descida um a um, só que ~3x mais rápida).
 pub async fn to_animated(bytes: &[u8], malvin: bool) -> Result<(Vec<u8>, u8, u8), ConvErr> {
-    let (ladder, filter): (&[(u8, u8)], &str) = if malvin {
+    let (ladder, filter): (&'static [(u8, u8)], &'static str) = if malvin {
         (&MALVIN_LADDER, MALVIN_FILTER)
     } else {
         (&ANIM_LADDER, FILTER)
@@ -150,40 +211,29 @@ pub async fn to_animated(bytes: &[u8], malvin: bool) -> Result<(Vec<u8>, u8, u8)
     let _g = SEM.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
     // Vivo até o fim: o ffmpeg lê de /proc/self/fd/N (moov no fim não importa).
     let mem = super::memfd::MemFile::new(bytes).map_err(|_| ConvErr::Unsupported)?;
-    for &(fps, q) in ladder {
-        let args = vec![
-            "-i".into(),
-            mem.path(),
-            "-an".into(),
-            "-t".into(),
-            "10".into(),
-            "-vf".into(),
-            format!("fps={fps},{filter}"),
-            "-c:v".into(),
-            "libwebp".into(),
-            "-lossless".into(),
-            "0".into(),
-            "-compression_level".into(),
-            "4".into(),
-            "-q:v".into(),
-            q.to_string(),
-            "-loop".into(),
-            "0".into(),
-        ];
-        match run(args, None, 25, "webp").await {
-            Err(Run::NoFfmpeg) => return Err(ConvErr::NoFfmpeg),
-            Err(Run::Fail) => return Err(ConvErr::Unsupported),
-            Err(Run::Timeout) => continue,
-            Ok(out) => {
-                let out = fix_riff(out).ok_or(ConvErr::Unsupported)?;
-                if out.len() <= ANIM_MAX {
-                    return Ok((out, fps, q));
-                }
-            }
+    let path = mem.path();
+    let n = ladder.len();
+    let probes = [0, (n - 1) / 2, n - 1];
+    let mut res = round(&path, ladder, filter, &probes).await?;
+    let k = res
+        .iter()
+        .position(Option::is_some)
+        .ok_or(ConvErr::TooBig)?;
+    let mut pick = (probes[k], res[k].take().ok_or(ConvErr::TooBig)?);
+    if k > 0 {
+        let between: Vec<usize> = (probes[k - 1] + 1..probes[k]).collect();
+        let found = round(&path, ladder, filter, &between).await?;
+        if let Some((j, out)) = found
+            .into_iter()
+            .enumerate()
+            .find_map(|(j, o)| o.map(|o| (j, o)))
+        {
+            pick = (between[j], out);
         }
     }
     drop(mem);
-    Err(ConvErr::TooBig)
+    let (fps, q) = ladder[pick.0];
+    Ok((pick.1, fps, q))
 }
 
 #[cfg(test)]
@@ -228,6 +278,15 @@ mod tests {
         assert!(FILTER.starts_with("scale=512:512") && !FILTER.contains("pad"));
         for w in ANIM_LADDER.windows(2) {
             assert!(w[1].0 < w[0].0 || (w[1].0 == w[0].0 && w[1].1 < w[0].1));
+        }
+    }
+
+    #[test]
+    fn sondas_cobrem_a_escada() {
+        // 3 sondas (topo, meio, fim) deixam no máximo 3 degraus por rodada de refino.
+        for n in [ANIM_LADDER.len(), MALVIN_LADDER.len()] {
+            let p = [0, (n - 1) / 2, n - 1];
+            assert!(p.windows(2).all(|w| w[1] - w[0] - 1 <= 3));
         }
     }
 

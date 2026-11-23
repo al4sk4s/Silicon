@@ -22,3 +22,10 @@ Fonte: spec.md (aprovada 23/11/2026) + plano do `planner`. Sem dependência nova
 - `config.rs`: `video_sticker_mode()` (`webp` padrão | `was`). `panel.rs`: select em Ajustes
   (só aparece com o spike aprovado). `make()`: modo `was` gera `.was`; erro/limite → cai
   em `to_animated` sem avisar.
+
+## Busca paralela da escada (23/11/2026)
+`to_animated` sonda topo/meio/fim da escada com 3 ffmpeg ao mesmo tempo e refina o trecho
+anterior à primeira sonda que coube (máx. 2 rodadas). Mesmo resultado da descida um a um
+(mesmo degrau, mesmos bytes), medido no i5-10210U do servidor com o vídeo de 10 s e muito
+movimento: 24,1 s -> 13,9 s (modo silicon), 10,0 s (modo malvin). Vídeo calmo (topo cabe)
+continua em 1 rodada. Pico de CPU: 3 ffmpeg por até ~7 s.
