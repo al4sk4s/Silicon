@@ -202,17 +202,17 @@ impl Store {
         self.set("sticker_publisher", publisher)
     }
 
-    /// Modo de conversão do vídeo (spec 004): "webp" (padrão) ou "was". Lixo cai em "webp".
+    /// Modo de conversão do vídeo (spec 004): "silicon" (padrão) ou "malvin". Lixo cai em "silicon".
     pub fn video_sticker_mode(&self) -> Result<String> {
         Ok(self
             .get("video_sticker_mode")?
-            .filter(|v| v == "was")
-            .unwrap_or_else(|| "webp".into()))
+            .filter(|v| v == "malvin")
+            .unwrap_or_else(|| "silicon".into()))
     }
 
     pub fn set_video_sticker_mode(&self, m: &str) -> Result<()> {
-        if m != "webp" && m != "was" {
-            return Err("modo de vídeo deve ser webp ou was".into());
+        if m != "silicon" && m != "malvin" {
+            return Err("modo de vídeo deve ser silicon ou malvin".into());
         }
         self.set("video_sticker_mode", m)
     }
@@ -464,9 +464,9 @@ mod tests {
     fn sticker_settings() {
         let s = Store::memory().unwrap();
         assert_eq!(s.sticker_per_min().unwrap(), 3);
-        assert_eq!(s.video_sticker_mode().unwrap(), "webp");
-        s.set_video_sticker_mode("was").unwrap();
-        assert_eq!(s.video_sticker_mode().unwrap(), "was");
+        assert_eq!(s.video_sticker_mode().unwrap(), "silicon");
+        s.set_video_sticker_mode("malvin").unwrap();
+        assert_eq!(s.video_sticker_mode().unwrap(), "malvin");
         assert!(s.set_video_sticker_mode("x").is_err());
         s.set_sticker_per_min(30).unwrap();
         assert_eq!(s.sticker_per_min().unwrap(), 30);

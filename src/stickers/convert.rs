@@ -51,6 +51,19 @@ fn fix_riff(mut out: Vec<u8>) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Modo "malvin" (como o bot MALVIN-XD): baixa para 320 px e sobe para 512 (canvas 512x512 mantido),
+/// 15 fps, qualidade alta primeiro; mais leve e mais borrado. Mesma regra: 10 s inteiros.
+const MALVIN_LADDER: [(u8, u8); 7] = [
+    (15, 75),
+    (15, 50),
+    (15, 30),
+    (15, 10),
+    (15, 0),
+    (12, 0),
+    (10, 0),
+];
+const MALVIN_FILTER: &str = "scale=320:320,scale=512:512,setsar=1,format=rgba";
+
 /// Estica para o quadrado (sem barras nem encolher): a tela é sempre 512x512.
 const FILTER: &str = "scale=512:512,setsar=1,format=rgba";
 
@@ -128,11 +141,16 @@ pub async fn to_static(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
 
 /// Vídeo/GIF -> WebP animado 512x512, <= 500.000 B. Entrada sempre por `memfd::MemFile`.
 /// Devolve também (fps, q) usados, para o log.
-pub async fn to_animated(bytes: &[u8]) -> Result<(Vec<u8>, u8, u8), ConvErr> {
+pub async fn to_animated(bytes: &[u8], malvin: bool) -> Result<(Vec<u8>, u8, u8), ConvErr> {
+    let (ladder, filter): (&[(u8, u8)], &str) = if malvin {
+        (&MALVIN_LADDER, MALVIN_FILTER)
+    } else {
+        (&ANIM_LADDER, FILTER)
+    };
     let _g = SEM.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
     // Vivo até o fim: o ffmpeg lê de /proc/self/fd/N (moov no fim não importa).
     let mem = super::memfd::MemFile::new(bytes).map_err(|_| ConvErr::Unsupported)?;
-    for (fps, q) in ANIM_LADDER {
+    for &(fps, q) in ladder {
         let args = vec![
             "-i".into(),
             mem.path(),
@@ -140,7 +158,7 @@ pub async fn to_animated(bytes: &[u8]) -> Result<(Vec<u8>, u8, u8), ConvErr> {
             "-t".into(),
             "10".into(),
             "-vf".into(),
-            format!("fps={fps},{FILTER}"),
+            format!("fps={fps},{filter}"),
             "-c:v".into(),
             "libwebp".into(),
             "-lossless".into(),
@@ -168,50 +186,8 @@ pub async fn to_animated(bytes: &[u8]) -> Result<(Vec<u8>, u8, u8), ConvErr> {
     Err(ConvErr::TooBig)
 }
 
-/// Corta um fluxo de JPEGs concatenados (cada um começa em FF D8 FF; dentro dos dados o FF vem como FF 00).
-fn split_jpegs(d: &[u8]) -> Vec<Vec<u8>> {
-    let starts: Vec<usize> = (0..d.len().saturating_sub(2))
-        .filter(|&i| d[i..i + 3] == [0xFF, 0xD8, 0xFF])
-        .collect();
-    (0..starts.len())
-        .map(|k| d[starts[k]..*starts.get(k + 1).unwrap_or(&d.len())].to_vec())
-        .collect()
-}
-
-/// Vídeo/GIF -> frames JPEG 512x512 (10 fps, até 10 s) para o `.was`. Entrada por memfd.
-pub async fn to_frames(bytes: &[u8]) -> Result<Vec<Vec<u8>>, ConvErr> {
-    let _g = SEM.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
-    let mem = super::memfd::MemFile::new(bytes).map_err(|_| ConvErr::Unsupported)?;
-    let args = ["-i", &mem.path(), "-an", "-t", "10", "-vf"]
-        .map(String::from)
-        .into_iter()
-        .chain([
-            format!("fps=10,{FILTER}"),
-            "-c:v".into(),
-            "mjpeg".into(),
-            "-q:v".into(),
-            "15".into(),
-        ])
-        .collect();
-    match run(args, None, 20, "image2pipe").await {
-        Err(Run::NoFfmpeg) => Err(ConvErr::NoFfmpeg),
-        Err(Run::Fail) => Err(ConvErr::Unsupported),
-        Err(Run::Timeout) => Err(ConvErr::TooBig),
-        Ok(out) => Ok(split_jpegs(&out)),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn split_jpegs_separa_por_soi() {
-        let d = [0xFF, 0xD8, 0xFF, 1, 0xFF, 0, 2, 0xFF, 0xD8, 0xFF, 3];
-        let v = super::split_jpegs(&d);
-        assert_eq!(v.len(), 2);
-        assert_eq!(v[1], [0xFF, 0xD8, 0xFF, 3]);
-        assert!(super::split_jpegs(&[1, 2]).is_empty());
-    }
-
     use super::*;
 
     #[test]
@@ -271,26 +247,17 @@ mod tests {
     #[ignore = "precisa de ffmpeg e VIDEO_TESTE"]
     async fn video_real_cabe_inteiro() {
         let b = std::fs::read(std::env::var("VIDEO_TESTE").unwrap()).unwrap();
-        let (out, fps, q) = to_animated(&b).await.unwrap();
+        let malvin = std::env::var("MODO_MALVIN").is_ok();
+        let (out, fps, q) = to_animated(&b, malvin).await.unwrap();
         eprintln!("fps={fps} q={q} bytes={}", out.len());
         assert!(out.len() <= ANIM_MAX);
     }
 
     #[tokio::test]
     #[ignore = "precisa de ffmpeg e memfd"]
-    async fn video_vira_frames_jpeg_e_was() {
-        let mkv = ffmpeg_gen(&["-c:v", "mpeg4", "-f", "matroska"]).await;
-        let f = to_frames(&mkv).await.unwrap();
-        assert!(f.len() >= 25, "3 s a 10 fps: {}", f.len()); // duração inteira, não pedaço
-        let w = crate::stickers::was::build(&f, "image/jpeg", 10, "a", "b").unwrap();
-        assert!(w.len() < 5_000_000, "tamanho do .was: {}", w.len());
-    }
-
-    #[tokio::test]
-    #[ignore = "precisa de ffmpeg e memfd"]
     async fn video_vira_webp_animado() {
         let mkv = ffmpeg_gen(&["-c:v", "mpeg4", "-f", "matroska"]).await;
-        let (out, _, _) = to_animated(&mkv).await.unwrap();
+        let (out, _, _) = to_animated(&mkv, false).await.unwrap();
         assert!(out.len() <= ANIM_MAX);
         assert!(out.windows(4).any(|w| w == b"ANIM"));
     }
@@ -300,7 +267,7 @@ mod tests {
     #[ignore = "precisa de ffmpeg"]
     async fn animado_com_exif() {
         let mkv = ffmpeg_gen(&["-c:v", "mpeg4", "-f", "matroska"]).await;
-        let (out, _, _) = to_animated(&mkv).await.unwrap();
+        let (out, _, _) = to_animated(&mkv, false).await.unwrap();
         let w = crate::stickers::exif::with_exif(&out, "Silicon™", "@al4sk4s").unwrap();
         assert!(whatsapp_rust::webp::is_animated(&w));
         assert!(w.windows(4).any(|x| x == b"EXIF"));

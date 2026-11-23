@@ -4,7 +4,6 @@ pub mod convert;
 pub mod exif;
 pub mod limit;
 pub mod memfd;
-pub mod was;
 
 use whatsapp_rust::prelude::*;
 
@@ -211,14 +210,16 @@ const MAX_IMG: u64 = 10 * 1024 * 1024;
 const MAX_VID: u64 = 32 * 1024 * 1024;
 
 /// Mídia -> WebP. Só memória (imagem por pipe, vídeo por memfd); nada vai a disco nem a log.
-pub async fn make(kind: Kind, bytes: &[u8]) -> Result<Vec<u8>, &'static str> {
+pub async fn make(kind: Kind, bytes: &[u8], malvin: bool) -> Result<Vec<u8>, &'static str> {
     use convert::ConvErr;
     let r = match kind {
         Kind::Image => convert::to_static(bytes).await,
-        Kind::Video => convert::to_animated(bytes).await.map(|(b, fps, q)| {
-            tracing::info!(fps, q, "figurinha animada"); // RFA3: sem conteúdo
-            b
-        }),
+        Kind::Video => convert::to_animated(bytes, malvin)
+            .await
+            .map(|(b, fps, q)| {
+                tracing::info!(fps, q, "figurinha animada"); // RFA3: sem conteúdo
+                b
+            }),
     };
     r.map_err(|e| match e {
         ConvErr::TooBig => "Mídia pesada demais",
@@ -297,15 +298,8 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
             return reply("Não consegui baixar").await;
         }
     };
-    // Modo `was` (spec 004, experimental): qualquer falha cai no WebP sem avisar (RFC2).
-    if src.kind == Kind::Video
-        && st.store.video_sticker_mode().is_ok_and(|m| m == "was")
-        && let Some(w) = make_was(&bytes, &st.store).await
-    {
-        drop(bytes);
-        return send_sticker(ctx, st, sent, &chat, w, true).await;
-    }
-    let webp = match make(src.kind, &bytes).await {
+    let malvin = st.store.video_sticker_mode().is_ok_and(|m| m == "malvin");
+    let webp = match make(src.kind, &bytes, malvin).await {
         Ok(w) => w,
         Err(m) => {
             st.push_event("figurinha_erro", &chat);
@@ -322,7 +316,7 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
         tracing::warn!("EXIF não aplicado: {e}");
         webp
     });
-    send_sticker(ctx, st, sent, &chat, webp, false).await;
+    send_sticker(ctx, st, sent, &chat, webp).await;
 }
 
 const MAX_STK: u64 = 2 * 1024 * 1024;
@@ -374,41 +368,21 @@ pub async fn handle_rename(
         }
     };
     match exif::with_exif(&bytes, &name, &publisher) {
-        Ok(w) => send_sticker(ctx, st, sent, &chat, w, false).await,
+        Ok(w) => send_sticker(ctx, st, sent, &chat, w).await,
         Err(_) => reply(ctx, sent, "Figurinha não suportada").await,
     }
 }
 
-/// shortcut: teto provisório do `.was` (o limite real do WhatsApp sai do teste B5).
-const WAS_MAX: usize = 5_000_000;
-
-/// Vídeo -> `.was` (frames JPEG em Lottie). None = qualquer falha ou passou do teto.
-async fn make_was(bytes: &[u8], store: &crate::config::Store) -> Option<Vec<u8>> {
-    let frames = convert::to_frames(bytes).await.ok()?;
-    let (name, publisher) = (
-        store.sticker_pack_name().unwrap_or_default(),
-        store.sticker_publisher().unwrap_or_default(),
-    );
-    let w = was::build(&frames, "image/jpeg", 10, &name, &publisher)?;
-    tracing::info!(bytes = w.len(), frames = frames.len(), "modo was");
-    if w.len() > WAS_MAX {
-        tracing::warn!("modo was: passou do teto, caindo para webp");
-        return None;
-    }
-    Some(w)
-}
-
-/// Sobe a figurinha (WebP, ou `.was` se `lottie`) e responde citando o comando.
+/// Sobe a figurinha WebP e responde citando o comando.
 async fn send_sticker(
     ctx: &MessageContext,
     st: &crate::state::AppState,
     sent: &crate::wa::Sent,
     chat: &str,
     webp: Vec<u8>,
-    lottie: bool,
 ) {
     let reply = |t: &'static str| reply(ctx, sent, t);
-    let animated = lottie || whatsapp_rust::webp::is_animated(&webp);
+    let animated = whatsapp_rust::webp::is_animated(&webp);
     let up = match ctx
         .client
         .upload(
@@ -432,15 +406,7 @@ async fn send_sticker(
     s.file_sha256 = Some(up.file_sha256.to_vec());
     s.file_length = Some(up.file_length);
     s.media_key_timestamp = Some(up.media_key_timestamp);
-    s.mimetype = Some(
-        if lottie {
-            "application/was"
-        } else {
-            "image/webp"
-        }
-        .into(),
-    );
-    s.is_lottie = lottie.then_some(true);
+    s.mimetype = Some("image/webp".into());
     s.width = Some(512);
     s.height = Some(512);
     s.is_animated = Some(animated);
@@ -558,8 +524,8 @@ mod tests {
         let png = media(&["-frames:v", "1", "-f", "image2pipe", "-c:v", "png"]);
         let mkv = media(&["-c:v", "mpeg4", "-f", "matroska"]);
         let before = snapshot();
-        assert!(make(Kind::Image, &png).await.is_ok());
-        assert!(make(Kind::Video, &mkv).await.is_ok());
+        assert!(make(Kind::Image, &png, false).await.is_ok());
+        assert!(make(Kind::Video, &mkv, false).await.is_ok());
         assert_eq!(before, snapshot());
     }
 

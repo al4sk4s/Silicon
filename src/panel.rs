@@ -543,8 +543,8 @@ fn settings_page(st: &AppState, msg: &str) -> String {
     let retencao = st.store.retencao_dias().unwrap_or(7);
     let sil_ini = st.store.silencio_ini().unwrap_or_default();
     let sil_fim = st.store.silencio_fim().unwrap_or_default();
-    let was = st.store.video_sticker_mode().is_ok_and(|m| m == "was");
-    let (sw, sd) = if was {
+    let malvin = st.store.video_sticker_mode().is_ok_and(|m| m == "malvin");
+    let (sw, sd) = if malvin {
         (" selected", "")
     } else {
         ("", " selected")
@@ -559,7 +559,7 @@ fn settings_page(st: &AppState, msg: &str) -> String {
              figurinhas por minuto (1-30): <input type=\"number\" min=\"1\" max=\"30\" name=\"sticker_per_min\" value=\"{per_min}\"><br>\
              nome da figurinha (até 64): <input name=\"sticker_pack_name\" value=\"{}\"><br>\
              autor da figurinha (até 64): <input name=\"sticker_publisher\" value=\"{}\"><br>\
-             vídeo vira figurinha em: <select name=\"video_sticker_mode\"><option value=\"webp\"{sd}>webp (padrão)</option><option value=\"was\"{sw}>was (experimental, risco maior de ban)</option></select><br>\
+             qualidade do vídeo: <select name=\"video_sticker_mode\"><option value=\"silicon\"{sd}>silicon (512 nítido, até 15–20 fps, mais pesado de converter)</option><option value=\"malvin\"{sw}>malvin (320 esticado, 15 fps, mais leve e mais borrado)</option></select><br>\
              <h2>Monitor</h2>\
              repetido ignorado por (min, 1-1440): <input type=\"number\" min=\"1\" max=\"1440\" name=\"dedupe_min\" value=\"{dedupe}\"><br>\
              alertas por hora (1-1000): <input type=\"number\" min=\"1\" max=\"1000\" name=\"alertas_hora\" value=\"{por_hora}\"><br>\
