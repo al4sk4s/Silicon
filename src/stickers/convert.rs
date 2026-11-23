@@ -190,7 +190,7 @@ pub async fn to_frames(bytes: &[u8]) -> Result<Vec<Vec<u8>>, ConvErr> {
             "-c:v".into(),
             "mjpeg".into(),
             "-q:v".into(),
-            "8".into(),
+            "15".into(),
         ])
         .collect();
     match run(args, None, 20, "image2pipe").await {
@@ -283,7 +283,7 @@ mod tests {
         let f = to_frames(&mkv).await.unwrap();
         assert!(f.len() >= 25, "3 s a 10 fps: {}", f.len()); // duração inteira, não pedaço
         let w = crate::stickers::was::build(&f, "image/jpeg", 10, "a", "b").unwrap();
-        assert!(w.len() < 3_000_000, "tamanho do .was: {}", w.len());
+        assert!(w.len() < 5_000_000, "tamanho do .was: {}", w.len());
     }
 
     #[tokio::test]

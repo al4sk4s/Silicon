@@ -380,7 +380,7 @@ pub async fn handle_rename(
 }
 
 /// shortcut: teto provisório do `.was` (o limite real do WhatsApp sai do teste B5).
-const WAS_MAX: usize = 3_000_000;
+const WAS_MAX: usize = 5_000_000;
 
 /// Vídeo -> `.was` (frames JPEG em Lottie). None = qualquer falha ou passou do teto.
 async fn make_was(bytes: &[u8], store: &crate::config::Store) -> Option<Vec<u8>> {
@@ -390,7 +390,12 @@ async fn make_was(bytes: &[u8], store: &crate::config::Store) -> Option<Vec<u8>>
         store.sticker_publisher().unwrap_or_default(),
     );
     let w = was::build(&frames, "image/jpeg", 10, &name, &publisher)?;
-    (w.len() <= WAS_MAX).then_some(w)
+    tracing::info!(bytes = w.len(), frames = frames.len(), "modo was");
+    if w.len() > WAS_MAX {
+        tracing::warn!("modo was: passou do teto, caindo para webp");
+        return None;
+    }
+    Some(w)
 }
 
 /// Sobe a figurinha (WebP, ou `.was` se `lottie`) e responde citando o comando.
