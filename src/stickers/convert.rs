@@ -14,8 +14,10 @@ pub enum ConvErr {
     NoFfmpeg,
 }
 
-/// Um ffmpeg por vez.
+/// Um ffmpeg de vídeo por vez.
 static SEM: Semaphore = Semaphore::const_new(1);
+/// Imagem leva ~0,2 s: fila própria, para não esperar um vídeo de 10+ s.
+static SEM_IMG: Semaphore = Semaphore::const_new(2);
 
 const STATIC_MAX: usize = 100_000;
 const ANIM_MAX: usize = 500_000;
@@ -115,7 +117,7 @@ async fn run(
 
 /// Imagem (PNG/JPEG/WebP...) -> WebP 512x512 estático, <= 100.000 B.
 pub async fn to_static(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
-    let _g = SEM.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
+    let _g = SEM_IMG.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
     for q in [75, 50, 30] {
         let args = ["-i", "pipe:0", "-frames:v", "1", "-vf"]
             .map(String::from)

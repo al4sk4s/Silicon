@@ -125,3 +125,8 @@ Perguntas originais:
 
 ## Resultado do spike `.was`
 Reprovado (ver Fases B e C).
+
+## Resposta rápida e variações (23/11/2026)
+- RF-R1: ao começar a trabalhar num `/s` (fonte válida, antes do download), o bot reage ao comando com um emoji sorteado de 🚰 ⤵️ ⤴️ ↪️ ↩️ 🔄 🔃 🔜. Vem depois do atraso de 1–2 s (P8); é resposta ao comando, não iniciativa (P1). Falha na reação é ignorada.
+- RF-R2: toda resposta de texto do bot tem pelo menos 5 variações de mesmo sentido (inclui "Formato não suportado" e as respostas de `/c`).
+- RF-R3: imagem tem fila de ffmpeg própria (2 por vez) e não espera vídeo em conversão; o log traz `dl_ms`, `conv_ms` e `up_ms` (sem conteúdo) para achar onde está a demora.

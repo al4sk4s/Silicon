@@ -38,6 +38,36 @@ fn command_reply(_text: &str, _admin: bool) -> Option<String> {
     None
 }
 
+use crate::stickers::variante;
+const SALVAR: &[&str] = &[
+    "Não consegui salvar.",
+    "Deu erro ao salvar, tenta de novo.",
+    "Falhou ao gravar, tenta mais uma vez.",
+    "Não rolou salvar isso agora.",
+    "Travei na hora de salvar, repete o comando.",
+];
+const OUTRO_PAPEL: &[&str] = &[
+    "Este chat tem outro papel; use o painel.",
+    "Esse chat já tem outro papel, muda pelo painel.",
+    "Aqui o papel é outro; ajusta pelo painel.",
+    "Não mexo nesse chat por aqui, ele tem outro papel: use o painel.",
+    "Chat com outro papel (alerta/monitorado): resolve no painel.",
+];
+const STATUS: &[&str] = &[
+    "Papel deste chat: {}.",
+    "Aqui o papel é: {}.",
+    "Este chat está como: {}.",
+    "O papel desse chat é {}.",
+    "Situação deste chat: {}.",
+];
+const USO_C: &[&str] = &[
+    "Uso: /c allow | deny | status",
+    "Use assim: /c allow, /c deny ou /c status",
+    "Faltou o argumento: /c allow | deny | status",
+    "Não entendi. Tenta /c allow, /c deny ou /c status",
+    "Comando certo: /c allow | deny | status",
+];
+
 #[derive(Debug, PartialEq)]
 enum ChatCmd {
     Allow,
@@ -86,7 +116,7 @@ async fn handle_chat_cmd(
             if ok {
                 st.push_event("comando_dono_allow", chat);
             }
-            (!ok).then(|| "Não consegui salvar.".to_string())
+            (!ok).then(|| variante(SALVAR).to_string())
         }
         (ChatCmd::Deny, Some(Role::Comando)) => {
             let ok = st
@@ -97,17 +127,14 @@ async fn handle_chat_cmd(
             if ok {
                 st.push_event("comando_dono_deny", chat);
             }
-            (!ok).then(|| "Não consegui salvar.".to_string())
+            (!ok).then(|| variante(SALVAR).to_string())
         }
         (ChatCmd::Deny, None) => None,
-        (ChatCmd::Allow | ChatCmd::Deny, Some(_)) => {
-            Some("Este chat tem outro papel; use o painel.".into())
+        (ChatCmd::Allow | ChatCmd::Deny, Some(_)) => Some(variante(OUTRO_PAPEL).into()),
+        (ChatCmd::Status, r) => {
+            Some(variante(STATUS).replace("{}", r.map_or("nenhum", |r| r.as_str())))
         }
-        (ChatCmd::Status, r) => Some(format!(
-            "Papel deste chat: {}.",
-            r.map_or("nenhum", |r| r.as_str())
-        )),
-        (ChatCmd::Usage, _) => Some("Uso: /c allow | deny | status".into()),
+        (ChatCmd::Usage, _) => Some(variante(USO_C).into()),
     };
     let res = match text {
         None => ctx.react("✅").await,
@@ -368,6 +395,14 @@ async fn build(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn mensagens_do_c_tem_5_variantes() {
+        for g in [SALVAR, OUTRO_PAPEL, STATUS, USO_C] {
+            assert!(g.len() >= 5);
+        }
+        assert!(STATUS.iter().all(|t| t.contains("{}")));
+    }
+
     use super::*;
 
     #[test]

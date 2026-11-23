@@ -119,7 +119,20 @@ const LIMITE_CAMPO: &[&str] = &[
     "Limite de 64 caracteres por campo, reduz um pouco",
     "Muito longo: até 64 caracteres no nome e no autor",
 ];
+const FORMATO: &[&str] = &[
+    "Formato não suportado",
+    "Não conheço esse formato de mídia",
+    "Esse formato não rola pra figurinha",
+    "Não consegui ler essa mídia, o formato é estranho",
+    "Formato esquisito, manda em outro (jpg, png, mp4)",
+    "Não abri esse arquivo, tenta outro formato",
+    "Esse tipo de arquivo eu não entendo",
+    "Formato não aceito, tenta outra mídia",
+];
+/// Reação rápida ao comando (antes da conversão, que pode levar vários segundos).
+const REACOES: &[&str] = &["🚰", "⤵️", "⤴️", "↪️", "↩️", "🔄", "🔃", "🔜"];
 const GRUPOS: &[&[&str]] = &[
+    FORMATO,
     CALMA,
     USO_S,
     BAIXAR,
@@ -140,7 +153,7 @@ fn vary(t: &str) -> &str {
         .map_or(t, |g| variante(g))
 }
 
-fn variante(opcoes: &'static [&'static str]) -> &'static str {
+pub(crate) fn variante(opcoes: &'static [&'static str]) -> &'static str {
     use rand::Rng;
     opcoes[rand::rng().random_range(0..opcoes.len())]
 }
@@ -223,7 +236,7 @@ pub async fn make(kind: Kind, bytes: &[u8], malvin: bool) -> Result<Vec<u8>, &'s
     };
     r.map_err(|e| match e {
         ConvErr::TooBig => "Mídia pesada demais",
-        ConvErr::Unsupported => "Formato não suportado",
+        ConvErr::Unsupported => FORMATO[0],
         ConvErr::NoFfmpeg => "ffmpeg ausente",
     })
 }
@@ -288,6 +301,11 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
     if file_len.is_some_and(|n| n > max_plain) {
         return reply("Mídia pesada demais").await;
     }
+    // Resposta visual imediata (já passou o atraso P8); a figurinha vem depois. Falha é ignorada.
+    if let Ok(r) = ctx.react(variante(REACOES)).await {
+        sent.add(r.message_id.as_str());
+    }
+    let t0 = std::time::Instant::now();
     let limits = DownloadLimits::new(max_plain + 65_536, max_plain);
     let bytes = match ctx.client.download(dl, limits).await {
         Ok(b) => b,
@@ -298,7 +316,9 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
             return reply("Não consegui baixar").await;
         }
     };
+    let dl_ms = t0.elapsed().as_millis();
     let malvin = st.store.video_sticker_mode().is_ok_and(|m| m == "malvin");
+    let t1 = std::time::Instant::now();
     let webp = match make(src.kind, &bytes, malvin).await {
         Ok(w) => w,
         Err(m) => {
@@ -306,6 +326,13 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
             return reply(m).await;
         }
     };
+    // Só tempos e tipo (sem conteúdo): mostra onde está a demora.
+    tracing::info!(
+        video = src.kind == Kind::Video,
+        dl_ms,
+        conv_ms = t1.elapsed().as_millis(),
+        "figurinha: etapas"
+    );
     drop(bytes); // viewOnce: a mídia original some da memória aqui
     // EXIF (nome/autor) é enfeite: se falhar, vai o WebP sem ele.
     let (name, publisher) = (
@@ -383,6 +410,7 @@ async fn send_sticker(
 ) {
     let reply = |t: &'static str| reply(ctx, sent, t);
     let animated = whatsapp_rust::webp::is_animated(&webp);
+    let t_up = std::time::Instant::now();
     let up = match ctx
         .client
         .upload(
@@ -398,6 +426,7 @@ async fn send_sticker(
             return reply("Não consegui enviar").await;
         }
     };
+    tracing::info!(up_ms = t_up.elapsed().as_millis(), "figurinha: upload");
     let mut s = wa::message::StickerMessage::default();
     s.url = Some(up.url);
     s.direct_path = Some(up.direct_path);
@@ -425,6 +454,11 @@ async fn send_sticker(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ha_8_reacoes() {
+        assert_eq!(super::REACOES.len(), 8);
+    }
+
     #[test]
     fn variantes_nao_vazias() {
         assert!(super::CALMA.len() >= 5 && super::USO_S.len() >= 5);
