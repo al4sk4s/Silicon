@@ -24,8 +24,7 @@ respondendo à mensagem de origem.
   **≤ 10 s**, **frame ≥ 8 ms**, o **primeiro frame deve mostrar a figurinha completa**;
   `isAnimated=true`, loop infinito. Comando-base (derivado, validar no app):
   `ffmpeg -i in -vf "fps=15,scale=512:512,setsar=1,pad=512:512:-1:-1:color=0x00000000,format=rgba" -an -t 10 -c:v libwebp -lossless 0 -q:v 60 -compression_level 6 -loop 0 out.webp`.
-  Se passar de 500 KB, reencoda reduzindo nesta ordem: `-q:v` (60→40→25), fps (15→12→10),
-  duração, escala; no máximo N tentativas, depois responde "mídia pesada demais".
+  Se passar de 500 KB, reencoda na escada da spec 004 (**duração 10 s e 512x512 nunca mudam**; só baixa `-q:v` 60→25 dentro de cada fps, e depois o fps 24→20→15→12); se nem o piso couber, responde "mídia pesada demais". [Atualizado 23/11/2026: a escada antiga cortava duração e encolhia a figurinha.]
   **Medido (ffmpeg 9.0.2, vídeo de teste 8 s, pior caso):** q60 → 733 KB, q40 → 611 KB,
   q25 muito lento (> 1 min com `-compression_level 6`). Conclusões: só baixar `-q:v` não
   basta; a escada precisa mexer também em fps/duração/escala; usar `-compression_level`

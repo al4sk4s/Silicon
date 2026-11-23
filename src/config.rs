@@ -202,8 +202,23 @@ impl Store {
         self.set("sticker_publisher", publisher)
     }
 
+    /// Modo de conversão do vídeo (spec 004): "webp" (padrão) ou "was". Lixo cai em "webp".
+    pub fn video_sticker_mode(&self) -> Result<String> {
+        Ok(self
+            .get("video_sticker_mode")?
+            .filter(|v| v == "was")
+            .unwrap_or_else(|| "webp".into()))
+    }
+
+    pub fn set_video_sticker_mode(&self, m: &str) -> Result<()> {
+        if m != "webp" && m != "was" {
+            return Err("modo de vídeo deve ser webp ou was".into());
+        }
+        self.set("video_sticker_mode", m)
+    }
+
     pub fn bind(&self) -> Result<String> {
-        Ok(self.get("bind")?.unwrap_or_else(|| "127.0.0.1:8080".into()))
+        Ok(self.get("bind")?.unwrap_or_else(|| "127.0.0.1:8787".into()))
     }
 
     pub fn owner_jid(&self) -> Result<Option<String>> {
@@ -431,7 +446,7 @@ mod tests {
         let s = Store::memory().unwrap();
         assert_eq!(s.delay_min_ms().unwrap(), 1000);
         assert_eq!(s.delay_max_ms().unwrap(), 2000);
-        assert_eq!(s.bind().unwrap(), "127.0.0.1:8080");
+        assert_eq!(s.bind().unwrap(), "127.0.0.1:8787");
         assert_eq!(s.owner_jid().unwrap(), None);
         assert_eq!(s.password_hash().unwrap(), None);
         s.set("delay_min_ms", "500").unwrap();
@@ -449,6 +464,10 @@ mod tests {
     fn sticker_settings() {
         let s = Store::memory().unwrap();
         assert_eq!(s.sticker_per_min().unwrap(), 3);
+        assert_eq!(s.video_sticker_mode().unwrap(), "webp");
+        s.set_video_sticker_mode("was").unwrap();
+        assert_eq!(s.video_sticker_mode().unwrap(), "was");
+        assert!(s.set_video_sticker_mode("x").is_err());
         s.set_sticker_per_min(30).unwrap();
         assert_eq!(s.sticker_per_min().unwrap(), 30);
         assert!(s.set_sticker_per_min(0).is_err());

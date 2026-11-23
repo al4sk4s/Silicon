@@ -48,7 +48,7 @@ pub fn effective_bind(configured: &str, has_password: bool) -> String {
         .rsplit(':')
         .next()
         .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(8080);
+        .unwrap_or(8787);
     format!("127.0.0.1:{port}")
 }
 
@@ -543,6 +543,12 @@ fn settings_page(st: &AppState, msg: &str) -> String {
     let retencao = st.store.retencao_dias().unwrap_or(7);
     let sil_ini = st.store.silencio_ini().unwrap_or_default();
     let sil_fim = st.store.silencio_fim().unwrap_or_default();
+    let was = st.store.video_sticker_mode().is_ok_and(|m| m == "was");
+    let (sw, sd) = if was {
+        (" selected", "")
+    } else {
+        ("", " selected")
+    };
     page(
         "Ajustes",
         &format!(
@@ -553,6 +559,7 @@ fn settings_page(st: &AppState, msg: &str) -> String {
              figurinhas por minuto (1-30): <input type=\"number\" min=\"1\" max=\"30\" name=\"sticker_per_min\" value=\"{per_min}\"><br>\
              nome da figurinha (até 64): <input name=\"sticker_pack_name\" value=\"{}\"><br>\
              autor da figurinha (até 64): <input name=\"sticker_publisher\" value=\"{}\"><br>\
+             vídeo vira figurinha em: <select name=\"video_sticker_mode\"><option value=\"webp\"{sd}>webp (padrão)</option><option value=\"was\"{sw}>was (experimental, risco maior de ban)</option></select><br>\
              <h2>Monitor</h2>\
              repetido ignorado por (min, 1-1440): <input type=\"number\" min=\"1\" max=\"1440\" name=\"dedupe_min\" value=\"{dedupe}\"><br>\
              alertas por hora (1-1000): <input type=\"number\" min=\"1\" max=\"1000\" name=\"alertas_hora\" value=\"{por_hora}\"><br>\
@@ -876,6 +883,10 @@ async fn settings_post(State(st): S, Form(f): Fields) -> Response {
         .and_then(|_| st.store.set_retencao_dias(mon[2]))
         .and_then(|_| st.store.set_sticker_meta(&pack, &publisher))
         .and_then(|_| st.store.set_sticker_per_min(per_min))
+        .and_then(|_| match f.get("video_sticker_mode") {
+            Some(m) => st.store.set_video_sticker_mode(m.trim()),
+            None => Ok(()),
+        })
         .and_then(|_| st.store.set("delay_min_ms", &min.to_string()))
         .and_then(|_| st.store.set("delay_max_ms", &max.to_string()))
         .and_then(|_| st.store.set("owner_jid", owner));
@@ -933,8 +944,8 @@ mod tests {
         // HTTP/2: sem header Host, URI absoluta com authority
         let r = app
             .oneshot(
-                Request::post("https://box:8080/login")
-                    .header("origin", "https://box:8080")
+                Request::post("https://box:8787/login")
+                    .header("origin", "https://box:8787")
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(Body::from("password=x"))
                     .unwrap(),
@@ -947,7 +958,7 @@ mod tests {
     #[test]
     fn proxy_host_is_opt_in() {
         let mut h = HeaderMap::new();
-        h.insert(header::HOST, "127.0.0.1:8080".parse().unwrap());
+        h.insert(header::HOST, "127.0.0.1:8787".parse().unwrap());
         h.insert(header::ORIGIN, "https://bot.casa".parse().unwrap());
         let uri = axum::http::Uri::from_static("/login");
         assert!(!same_origin(&h, &uri, None));
@@ -1418,7 +1429,7 @@ mod tests {
         );
         assert_eq!(effective_bind("0.0.0.0:9000", false), "127.0.0.1:9000");
         assert_eq!(effective_bind("0.0.0.0:9000", true), "0.0.0.0:9000");
-        assert_eq!(effective_bind("lixo", false), "127.0.0.1:8080");
+        assert_eq!(effective_bind("lixo", false), "127.0.0.1:8787");
         assert!(is_loopback("127.0.0.1:80") && !is_loopback("0.0.0.0:80"));
     }
 }
