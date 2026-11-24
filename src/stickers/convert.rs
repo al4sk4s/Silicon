@@ -51,11 +51,16 @@ fn filter(side: u16) -> String {
 }
 
 /// Roda o ffmpeg; `stdin` só para imagem. O stderr não é capturado (nunca logamos conteúdo).
-async fn run(args: Vec<String>, stdin: Option<&[u8]>, secs: u64) -> Result<Vec<u8>, Run> {
+async fn run(
+    args: Vec<String>,
+    fmt: &str,
+    stdin: Option<&[u8]>,
+    secs: u64,
+) -> Result<Vec<u8>, Run> {
     let mut child = Command::new("ffmpeg")
         .args(["-hide_banner", "-v", "error"])
         .args(&args)
-        .args(["-f", "webp", "pipe:1"])
+        .args(["-f", fmt, "pipe:1"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -102,7 +107,7 @@ pub async fn to_static(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
             .chain(["-c:v", "libwebp", "-lossless", "0", "-q:v"].map(String::from))
             .chain([q.to_string()])
             .collect();
-        match run(args, Some(bytes), 5).await {
+        match run(args, "webp", Some(bytes), 5).await {
             Err(Run::NoFfmpeg) => return Err(ConvErr::NoFfmpeg),
             Err(Run::Fail) => return Err(ConvErr::Unsupported),
             Err(Run::Timeout) => continue,
@@ -117,8 +122,14 @@ pub async fn to_static(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
     Err(ConvErr::TooBig)
 }
 
+/// WebP animado + duração (s) da rung vencedora, usada para cortar o áudio igual.
+pub struct Anim {
+    pub webp: Vec<u8>,
+    pub secs: u32,
+}
+
 /// Vídeo/GIF -> WebP animado 512x512, <= 500.000 B. Entrada sempre por `memfd::MemFile`.
-pub async fn to_animated(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
+pub async fn to_animated(bytes: &[u8]) -> Result<Anim, ConvErr> {
     let _g = SEM.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
     // Vivo até o fim: o ffmpeg lê de /proc/self/fd/N (moov no fim não importa).
     let mem = super::memfd::MemFile::new(bytes).map_err(|_| ConvErr::Unsupported)?;
@@ -142,20 +153,63 @@ pub async fn to_animated(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
             "-loop".into(),
             "0".into(),
         ];
-        match run(args, None, 15).await {
+        match run(args, "webp", None, 15).await {
             Err(Run::NoFfmpeg) => return Err(ConvErr::NoFfmpeg),
             Err(Run::Fail) => return Err(ConvErr::Unsupported),
             Err(Run::Timeout) => continue,
             Ok(out) => {
                 let out = fix_riff(out).ok_or(ConvErr::Unsupported)?;
                 if out.len() <= ANIM_MAX {
-                    return Ok(out);
+                    return Ok(Anim {
+                        webp: out,
+                        secs: secs.into(),
+                    });
                 }
             }
         }
     }
     drop(mem);
     Err(ConvErr::TooBig)
+}
+
+/// Primeira trilha de áudio -> Ogg/Opus mono, até `secs` s. Sem áudio -> `Ok(None)`.
+pub async fn extract_audio(bytes: &[u8], secs: u32) -> Result<Option<Vec<u8>>, ConvErr> {
+    let _g = SEM.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
+    let mem = super::memfd::MemFile::new(bytes).map_err(|_| ConvErr::Unsupported)?;
+    // Sem faixa de áudio o ffmpeg falha ("does not contain any stream"); a mídia já foi lida com
+    // sucesso pelo `to_animated`, então falha aqui = sem áudio, não erro (sem ler stderr).
+    let probe = ["-i", &mem.path(), "-map", "0:a:0", "-vn", "-t", "0.1"]
+        .map(String::from)
+        .to_vec();
+    match run(probe, "null", None, 10).await {
+        Ok(_) => {}
+        Err(Run::NoFfmpeg) => return Err(ConvErr::NoFfmpeg),
+        Err(Run::Timeout) => return Err(ConvErr::TooBig),
+        Err(Run::Fail) => return Ok(None),
+    }
+    let args = [
+        "-i",
+        &mem.path(),
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-t",
+        &secs.to_string(),
+        "-c:a",
+        "libopus",
+        "-b:a",
+        "32k",
+        "-ac",
+        "1",
+    ]
+    .map(String::from)
+    .to_vec();
+    match run(args, "ogg", None, 15).await {
+        Err(Run::NoFfmpeg) => Err(ConvErr::NoFfmpeg),
+        Err(Run::Fail) => Err(ConvErr::Unsupported),
+        Err(Run::Timeout) => Err(ConvErr::TooBig),
+        Ok(out) => Ok((!out.is_empty()).then_some(out)),
+    }
 }
 
 #[cfg(test)]
@@ -208,9 +262,23 @@ mod tests {
     #[tokio::test]
     #[ignore = "precisa de ffmpeg e memfd"]
     async fn video_vira_webp_animado() {
-        let mkv = ffmpeg_gen(&["-c:v", "mpeg4", "-f", "matroska"]).await;
+        let mkv = ffmpeg_gen(&["-c:v", "mpeg4", "-t", "3", "-f", "matroska"]).await;
         let out = to_animated(&mkv).await.unwrap();
-        assert!(out.len() <= ANIM_MAX);
-        assert!(out.windows(4).any(|w| w == b"ANIM"));
+        assert!(out.webp.len() <= ANIM_MAX);
+        assert!(out.webp.windows(4).any(|w| w == b"ANIM"));
+        assert!(out.secs > 0);
+    }
+
+    #[tokio::test]
+    #[ignore = "precisa de ffmpeg e memfd"]
+    async fn extrai_audio_ogg_ou_none() {
+        let com = ffmpeg_gen(&[
+            "-f", "lavfi", "-i", "sine=d=3", "-c:v", "mpeg4", "-t", "3", "-f", "matroska",
+        ])
+        .await;
+        let a = extract_audio(&com, 2).await.unwrap().unwrap();
+        assert_eq!(&a[..4], b"OggS");
+        let sem = ffmpeg_gen(&["-c:v", "mpeg4", "-t", "3", "-f", "matroska"]).await;
+        assert_eq!(extract_audio(&sem, 2).await, Ok(None));
     }
 }

@@ -24,6 +24,7 @@ respondendo à mensagem de origem.
   **≤ 10 s**, **frame ≥ 8 ms**, o **primeiro frame deve mostrar a figurinha completa**;
   `isAnimated=true`, loop infinito. Comando-base (derivado, validar no app):
   `ffmpeg -i in -vf "fps=15,scale=512:512,setsar=1,pad=512:512:-1:-1:color=0x00000000,format=rgba" -an -t 10 -c:v libwebp -lossless 0 -q:v 60 -compression_level 6 -loop 0 out.webp`.
+  *Nota (spec 005, 2026-11-24): o `-an` vale só para o WebP; o áudio da mídia agora segue como `audioMessage` do sticker.*
   Se passar de 500 KB, reencoda reduzindo nesta ordem: `-q:v` (60→40→25), fps (15→12→10),
   duração, escala; no máximo N tentativas, depois responde "mídia pesada demais".
   **Medido (ffmpeg 9.0.2, vídeo de teste 8 s, pior caso):** q60 → 733 KB, q40 → 611 KB,

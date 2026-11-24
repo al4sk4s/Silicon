@@ -322,6 +322,12 @@ fn settings_page(st: &AppState, msg: &str) -> String {
     let per_min = st.store.sticker_per_min().unwrap_or(3);
     let pack = st.store.sticker_pack_name().unwrap_or_default();
     let publisher = st.store.sticker_publisher().unwrap_or_default();
+    let sound_on = if st.store.sticker_sound().unwrap_or(true) {
+        " checked"
+    } else {
+        ""
+    };
+    let sound_max = st.store.sticker_sound_max_s().unwrap_or(10);
     page(
         "Ajustes",
         &format!(
@@ -332,6 +338,8 @@ fn settings_page(st: &AppState, msg: &str) -> String {
              figurinhas por minuto (1-30): <input type=\"number\" min=\"1\" max=\"30\" name=\"sticker_per_min\" value=\"{per_min}\"><br>\
              nome da figurinha (até 64): <input name=\"sticker_pack_name\" value=\"{}\"><br>\
              autor da figurinha (até 64): <input name=\"sticker_publisher\" value=\"{}\"><br>\
+             figurinha com som (vídeo com áudio): <input type=\"checkbox\" name=\"sticker_sound\" value=\"1\"{sound_on}><br>\
+             segundos máximos de som (1-10): <input type=\"number\" min=\"1\" max=\"10\" name=\"sticker_sound_max_s\" value=\"{sound_max}\"><br>\
              <button>Salvar</button></form>",
             esc(msg),
             esc(&owner),
@@ -378,6 +386,29 @@ async fn settings_post(State(st): S, Form(f): Fields) -> Response {
         )
             .into_response();
     };
+    // ausente = mantém o valor atual (formulários antigos); presente e inválido = 400 sem gravar
+    let sound_max = match f.get("sticker_sound_max_s") {
+        None => st.store.sticker_sound_max_s().unwrap_or(10),
+        Some(v) => match v
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .filter(|n| (1..=10).contains(n))
+        {
+            Some(n) => n,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Html(settings_page(
+                        &st,
+                        "Segundos de som deve ser um inteiro de 1 a 10.",
+                    )),
+                )
+                    .into_response();
+            }
+        },
+    };
+    let sound_on = f.contains_key("sticker_sound");
     let owner = f.get("owner_jid").map_or("", |s| s.trim());
     let field = |k: &str| f.get(k).map_or("", |s| s.trim()).to_string();
     let (pack, publisher) = (field("sticker_pack_name"), field("sticker_publisher"));
@@ -397,6 +428,8 @@ async fn settings_post(State(st): S, Form(f): Fields) -> Response {
         .store
         .set_sticker_meta(&pack, &publisher)
         .and_then(|_| st.store.set_sticker_per_min(per_min))
+        .and_then(|_| st.store.set_sticker_sound(sound_on))
+        .and_then(|_| st.store.set_sticker_sound_max_s(sound_max))
         .and_then(|_| st.store.set("delay_min_ms", &min.to_string()))
         .and_then(|_| st.store.set("delay_max_ms", &max.to_string()))
         .and_then(|_| st.store.set("owner_jid", owner));
@@ -545,6 +578,47 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn settings_post_saves_sticker_sound() {
+        let (app, st) = app();
+        let tok = st.sessions.create();
+        let base = "delay_min_ms=1000&delay_max_ms=2000&owner_jid=&sticker_per_min=3";
+        let r = app
+            .clone()
+            .oneshot(post(
+                "/settings",
+                &format!("{base}&sticker_sound=1&sticker_sound_max_s=6"),
+                None,
+                Some(&tok),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(st.store.sticker_sound().unwrap());
+        assert_eq!(st.store.sticker_sound_max_s().unwrap(), 6);
+        // checkbox ausente desliga; segundos fora da faixa = 400 sem gravar nada
+        let r = app
+            .clone()
+            .oneshot(post(
+                "/settings",
+                &format!("{base}&sticker_sound_max_s=11"),
+                None,
+                Some(&tok),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert!(st.store.sticker_sound().unwrap());
+        let r = app
+            .clone()
+            .oneshot(post("/settings", base, None, Some(&tok)))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(!st.store.sticker_sound().unwrap());
+        assert_eq!(st.store.sticker_sound_max_s().unwrap(), 6);
     }
 
     #[tokio::test]

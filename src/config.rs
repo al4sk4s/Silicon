@@ -137,6 +137,31 @@ impl Store {
         self.set("sticker_per_min", &n.to_string())
     }
 
+    // som das figurinhas animadas: ligado, a menos que gravado "0"
+    pub fn sticker_sound(&self) -> Result<bool> {
+        Ok(self.get("sticker_sound")?.as_deref() != Some("0"))
+    }
+
+    pub fn set_sticker_sound(&self, on: bool) -> Result<()> {
+        self.set("sticker_sound", if on { "1" } else { "0" })
+    }
+
+    // fora de 1..=10 ou lixo no banco cai no padrão 10
+    pub fn sticker_sound_max_s(&self) -> Result<u32> {
+        Ok(self
+            .get("sticker_sound_max_s")?
+            .and_then(|v| v.parse().ok())
+            .filter(|n| (1..=10).contains(n))
+            .unwrap_or(10))
+    }
+
+    pub fn set_sticker_sound_max_s(&self, n: u32) -> Result<()> {
+        if !(1..=10).contains(&n) {
+            return Err("duração máxima do som deve estar entre 1 e 10 segundos".into());
+        }
+        self.set("sticker_sound_max_s", &n.to_string())
+    }
+
     /// Nome e autor gravados no EXIF das figurinhas novas (RF10); vazio é válido.
     pub fn sticker_pack_name(&self) -> Result<String> {
         Ok(self
@@ -247,6 +272,24 @@ mod tests {
         assert_eq!(s.sticker_per_min().unwrap(), 3);
         s.set("sticker_per_min", "abc").unwrap();
         assert_eq!(s.sticker_per_min().unwrap(), 3);
+    }
+
+    #[test]
+    fn sticker_sound_settings() {
+        let s = Store::memory().unwrap();
+        assert!(s.sticker_sound().unwrap());
+        assert_eq!(s.sticker_sound_max_s().unwrap(), 10);
+        s.set_sticker_sound(false).unwrap();
+        assert!(!s.sticker_sound().unwrap());
+        s.set_sticker_sound(true).unwrap();
+        assert!(s.sticker_sound().unwrap());
+        s.set_sticker_sound_max_s(1).unwrap();
+        assert_eq!(s.sticker_sound_max_s().unwrap(), 1);
+        assert!(s.set_sticker_sound_max_s(0).is_err());
+        assert!(s.set_sticker_sound_max_s(11).is_err());
+        assert_eq!(s.sticker_sound_max_s().unwrap(), 1);
+        s.set("sticker_sound_max_s", "99").unwrap();
+        assert_eq!(s.sticker_sound_max_s().unwrap(), 10);
     }
 
     #[test]

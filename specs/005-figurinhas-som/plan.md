@@ -29,8 +29,10 @@ Constituição v1.0.0 · whatsapp-rust `eeb24da` (fixo, **sem atualizar o pin**:
 - O WhatsApp controla por AB prop de servidor (`SOUND_STICKERS_CREATION_ENABLED` etc.,
   `wacore/src/iq/abprops.rs:12026`): **a conta do bot pode não ter a função liberada** e o servidor
   ignorar o áudio sem erro. Risco real, só o T-WA mostra.
-- Nome Rust do campo (oneof gerado no build) **não conferido**: ler no `cargo doc`/código gerado ao
-  escrever T3; pode ser `audio_message` direto ou `Audio::AudioMessage(..)`.
+- Nome Rust do campo (T1, conferido no código gerado, buffa): `StickerMessage.audio: Option<wa::message::sticker_message::Audio>`
+  com `Audio::AudioMessage(Box<AudioMessage>)`; `media::audio_message(..)` devolve `wa::Message` (`.audio_message` é `MessageField`).
+- Achado T3: sem faixa de áudio o ffmpeg **falha** ("does not contain any stream"); `extract_audio` faz um probe
+  `-map 0:a:0` antes e trata falha do probe como `None` (a mídia já foi lida pelo `to_animated`).
 
 ## Módulos tocados
 - `src/stickers/convert.rs`
