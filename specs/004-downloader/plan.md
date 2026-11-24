@@ -1,6 +1,6 @@
 # Plano 004 — Downloader (o COMO)
 
-Status: rascunho · Spec: `specs/004-downloader/spec.md` (aprovada 2026-11-24) · Depende de 001 e 002 ·
+Status: implementado (T1–T13), falta validação [WA] · Spec: `specs/004-downloader/spec.md` (aprovada 2026-11-24) · Depende de 001 e 002 ·
 Constituição v1.0.0 · whatsapp-rust `eeb24da` (fixo) · yt-dlp externo (versão registrada no boot).
 
 ## Decisões a confirmar
@@ -110,3 +110,18 @@ envio manual: `stickers/mod.rs:372-416`. Quote: `ctx.build_quote_context()`.
 | F | painel (multipart, testar, limite) | worker | B, C, D |
 | G | wa.rs/main.rs/.gitignore + integração | worker | E |
 Paralelo sem build: H, A, B, C, D. Build um por vez (`-j1`): fmt/clippy/test a cada leva.
+
+## Achados T1 (yt-dlp 2026.11.23, venv; Unlicense) — 2026-11-24
+**Medido:**
+- TikTok (1 vídeo público): formatos `download` (rótulo *watermarked*, pref -2) e `h264_540p_*`/`bytevc1_540p_*` (sem rótulo, 576x1024, pref -1). `-f "bv*+ba/b"` escolheu `bytevc1_540p` (sem marca) → o seletor padrão evita o marcado; basta o padrão, `watermark=false`. Só 1 vídeo testado.
+- `vm.tiktok.com/...` testado caiu em `www.tiktok.com/?_r=1` → `Unsupported URL`. Link curto pode falhar; classificar como `NotFound`/`Other`.
+- ID de TikTok inexistente: `Your IP address is blocked from accessing this post` (enganosa) → tratar como `NotFound`.
+- Instagram anônimo, 2ª chamada à mesma URL: `redirected to the login page. You have exceeded the rate-limit for accessing posts anonymously` → `LoginRequired`.
+- Instagram ID inexistente: `Instagram sent an empty media response` → `NotFound`.
+- Reel: formatos DASH separados (vídeo e áudio) → precisa do ffmpeg para juntar. Carrossel (`/p/`) devolve ≥2 entradas mesmo com `--no-playlist` → usar `--playlist-items 1`? (a decidir) ou recusar.
+**Só documentação (não reproduzido):** privado → `only available for registered users who follow this account` (login required). 429 HTTP, 404 real, `--max-filesize`: não medidos.
+
+## Achados T2 (lib eeb24da)
+- `media::video_message(UploadResponse, VideoOptions)`, `media::document_message(UploadResponse, DocumentOptions)`; não preenchem `width/height` (vídeo) nem `thumbnail_width/height` (documento): mutar o proto depois.
+- `VideoOptions {caption, mimetype, jpeg_thumbnail, duration_seconds, gif_playback, context_info}`; `DocumentOptions {mimetype, file_name, title, caption, page_count, jpeg_thumbnail, context_info}` (builders `with_*`, `#[non_exhaustive]`). `context_info: Option<Box<wa::ContextInfo>>` ← `Box::new(ctx.build_quote_context())`.
+- `ctx.client.upload(Vec<u8>, MediaType::Video|Document, UploadOptions::new())` (`whatsapp_rust::download::MediaType`, `whatsapp_rust::media`, `whatsapp_rust::upload`). `VideoMessage.width/height/seconds: Option<u32>`; no `wa::Message` o campo é `MessageField` (`as_mut`/`get_or_insert_default` a validar no compilador).

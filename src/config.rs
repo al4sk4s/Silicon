@@ -200,6 +200,47 @@ impl Store {
         self.set("sticker_sound_max_s", &n.to_string())
     }
 
+    // fora de 1..=10 ou lixo no banco cai no padrão 2
+    pub fn dl_per_min(&self) -> Result<usize> {
+        Ok(self
+            .get("dl_per_min")?
+            .and_then(|v| v.parse().ok())
+            .filter(|n| (1..=10).contains(n))
+            .unwrap_or(2))
+    }
+
+    pub fn set_dl_per_min(&self, n: usize) -> Result<()> {
+        if !(1..=10).contains(&n) {
+            return Err("downloads por minuto deve estar entre 1 e 10".into());
+        }
+        self.set("dl_per_min", &n.to_string())
+    }
+
+    // só leitura; fora de 10..=600 ou lixo cai no padrão 120 s
+    pub fn dl_timeout_s(&self) -> Result<u64> {
+        Ok(self
+            .get("dl_timeout_s")?
+            .and_then(|v| v.parse().ok())
+            .filter(|n| (10..=600).contains(n))
+            .unwrap_or(120))
+    }
+
+    fn cookies_key(plat: &str) -> Result<String> {
+        match plat {
+            "tiktok" | "instagram" => Ok(format!("cookies_status_{plat}")),
+            _ => Err("plataforma deve ser tiktok ou instagram".into()),
+        }
+    }
+
+    /// Estado dos cookies da plataforma, valor livre ("ok|<unix s>" ou "falhou|<unix s>").
+    pub fn cookies_status(&self, plat: &str) -> Result<Option<String>> {
+        self.get(&Self::cookies_key(plat)?)
+    }
+
+    pub fn set_cookies_status(&self, plat: &str, v: &str) -> Result<()> {
+        self.set(&Self::cookies_key(plat)?, v)
+    }
+
     /// Nome e autor gravados no EXIF das figurinhas novas (RF10); vazio é válido.
     pub fn sticker_pack_name(&self) -> Result<String> {
         Ok(self
@@ -633,6 +674,37 @@ mod tests {
         assert_eq!(s.alertas_hora().unwrap(), 10);
         assert_eq!(s.retencao_dias().unwrap(), 7);
         assert_eq!(s.silencio_ini().unwrap(), "");
+    }
+
+    #[test]
+    fn download_settings() {
+        let s = Store::memory().unwrap();
+        assert_eq!(s.dl_per_min().unwrap(), 2);
+        s.set_dl_per_min(10).unwrap();
+        assert_eq!(s.dl_per_min().unwrap(), 10);
+        assert!(s.set_dl_per_min(0).is_err());
+        assert!(s.set_dl_per_min(11).is_err());
+        s.set("dl_per_min", "abc").unwrap();
+        assert_eq!(s.dl_per_min().unwrap(), 2);
+        assert_eq!(s.dl_timeout_s().unwrap(), 120);
+        s.set("dl_timeout_s", "5").unwrap();
+        assert_eq!(s.dl_timeout_s().unwrap(), 120);
+        s.set("dl_timeout_s", "600").unwrap();
+        assert_eq!(s.dl_timeout_s().unwrap(), 600);
+    }
+
+    #[test]
+    fn cookies_status_roundtrip() {
+        let s = Store::memory().unwrap();
+        assert_eq!(s.cookies_status("tiktok").unwrap(), None);
+        s.set_cookies_status("tiktok", "ok|123").unwrap();
+        assert_eq!(
+            s.cookies_status("tiktok").unwrap().as_deref(),
+            Some("ok|123")
+        );
+        assert_eq!(s.cookies_status("instagram").unwrap(), None);
+        assert!(s.cookies_status("youtube").is_err());
+        assert!(s.set_cookies_status("youtube", "ok").is_err());
     }
 
     #[test]
