@@ -70,7 +70,7 @@ Silicon
 
 ```bash
 # 1. defina a senha do painel
-silicon set-password
+silicon set-password   # ou pule: o 1º acesso ao painel (loopback) pede a senha na tela
 
 # 2. suba o bot e leia o QR Code uma única vez
 silicon
@@ -110,8 +110,15 @@ sudo -u silicon env SILICON_DATA_DIR=/var/lib/silicon silicon
 sudo systemctl enable --now silicon
 ```
 
-- **Pareie no terminal, não pelo systemd:** sob o systemd o QR (e o pair code) iriam para o
-  journald. Rode sempre como usuário `silicon` e com o **mesmo** `SILICON_DATA_DIR`; como outro
+- **Binário pronto:** ao empurrar uma tag `vX.Y.Z`, o GitHub Actions publica no Release o
+  `silicon-linux-x86_64`, o `silicon-x86_64.AppImage` e o `SHA256SUMS` (spec 006). Use no lugar
+  de `target/release/silicon` no passo 2. Windows `.exe` não é suportado (código Unix). O `ffmpeg` continua sendo dependência do sistema.
+- **Pareamento pelo painel (spec 005):** em `/pair` o QR aparece em tempo real, com o código de
+  pareamento, campo de número (`5511999998888`) e "Tentar de novo". Só a LAN, com senha (P5).
+- **Comandos do dono (spec 004):** `/s` funciona em qualquer chat para você; `/c allow`, `/c deny`
+  e `/c status` (ou `/comandos`) liberam/removem o chat atual (o grupo todo) e o bot reage com ✅.
+- **Pareie pelo painel (`/pair`) ou no terminal:** o QR/código só são impressos quando o stdout é um
+  terminal (nunca no journald); pelo painel funcionam também sob o systemd. Rode sempre como usuário `silicon` e com o **mesmo** `SILICON_DATA_DIR`; como outro
   usuário, os arquivos criados não seriam abertos pelo daemon. Para usar pair code em vez do QR,
   defina `SILICON_PAIR_PHONE=<só dígitos, com DDI>` no mesmo comando.
 - **Atrás de proxy reverso?** Se o proxy mantém o `Host` original, nada a fazer. Se ele troca o `Host` pelo do upstream, o login dá 403 (checagem de `Origin`): defina `SILICON_PROXY_HOST=<host público>` no serviço. Proxy só na LAN, nunca exposto à internet (P5).

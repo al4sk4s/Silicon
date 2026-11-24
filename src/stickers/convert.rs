@@ -281,4 +281,15 @@ mod tests {
         let sem = ffmpeg_gen(&["-c:v", "mpeg4", "-t", "3", "-f", "matroska"]).await;
         assert_eq!(extract_audio(&sem, 2).await, Ok(None));
     }
+
+    // Caminho real do bot: animado do ffmpeg + EXIF continua animado e carrega o EXIF.
+    #[tokio::test]
+    #[ignore = "precisa de ffmpeg"]
+    async fn animado_com_exif() {
+        let mkv = ffmpeg_gen(&["-c:v", "mpeg4", "-f", "matroska"]).await;
+        let out = to_animated(&mkv).await.unwrap();
+        let w = crate::stickers::exif::with_exif(&out.webp, "Silicon™", "@al4sk4s").unwrap();
+        assert!(whatsapp_rust::webp::is_animated(&w));
+        assert!(w.windows(4).any(|x| x == b"EXIF"));
+    }
 }

@@ -85,6 +85,17 @@ impl Store {
         Ok(map)
     }
 
+    /// Chats privados com papel `comando` (jid, nome), para a aba Contatos (spec 007).
+    pub fn dm_commands(&self) -> Result<Vec<(String, Option<String>)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT jid, name FROM roles WHERE role = 'comando'
+             AND (jid LIKE '%@lid' OR jid LIKE '%@s.whatsapp.net') ORDER BY name, jid",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     pub fn get(&self, key: &str) -> Result<Option<String>> {
         Ok(self
             .conn()
@@ -206,6 +217,19 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dm_commands_lists_only_private_command_chats() {
+        let s = Store::memory().unwrap();
+        s.set_role("1@lid", Role::Comando, Some("Ana")).unwrap();
+        s.set_role("2@s.whatsapp.net", Role::Monitorado, None)
+            .unwrap();
+        s.set_role("g@g.us", Role::Comando, None).unwrap();
+        assert_eq!(
+            s.dm_commands().unwrap(),
+            vec![("1@lid".into(), Some("Ana".into()))]
+        );
+    }
 
     #[test]
     fn role_crud_and_cache() {
