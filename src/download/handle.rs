@@ -103,6 +103,8 @@ async fn run(bin: &str, args: &[&str]) -> Option<Vec<u8>> {
     }
 }
 
+const REACOES: &[&str] = &["⏬", "📥", "⬇️", "🔽", "⏳", "🛰️"];
+
 /// Trata `/baixar`. Falha = uma linha citando o comando.
 /// Log só com plataforma, resultado e tamanho (nunca URL nem conteúdo).
 pub async fn handle(
@@ -149,6 +151,10 @@ pub async fn handle(
     let Ok(tmp) = tempfile::tempdir() else {
         return fail(DlError::Other).await;
     };
+    // Resposta visual: o usuário vê que está baixando. Falha é ignorada.
+    if let Ok(r) = ctx.react(crate::stickers::variante(REACOES)).await {
+        sent.add(r.message_id.as_str());
+    }
     let timeout = Duration::from_secs(st.store.dl_timeout_s().unwrap_or(120));
     let got = match ytdlp::fetch(&link, plat, &cookies_dir(), tmp.path(), timeout).await {
         Ok(g) => g,
