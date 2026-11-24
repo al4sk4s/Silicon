@@ -66,6 +66,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/metrics", get(metrics_get))
         .route("/rules", get(rules_get).post(rules_post))
         .route("/alerts", get(alerts_get))
+        .route("/debug", get(debug_get))
         .route("/downloader", get(dl_get))
         .route("/downloader/limit", post(dl_limit))
         .route(
@@ -144,7 +145,7 @@ fn page(title: &str, body: &str) -> String {
     format!(
         "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
          <title>Silicon - {t}</title><style>{CSS}</style></head><body>\
-         <nav><b>Silicon</b><a href=\"/\">Status</a><a href=\"/chats\">Chats</a><a href=\"/contacts\">Contatos</a><a href=\"/rules\">Regras</a><a href=\"/alerts\">Alertas</a><a href=\"/pair\">Pareamento</a><a href=\"/downloader\">Downloader</a><a href=\"/settings\">Ajustes</a>\
+         <nav><b>Silicon</b><a href=\"/\">Status</a><a href=\"/chats\">Chats</a><a href=\"/contacts\">Contatos</a><a href=\"/rules\">Regras</a><a href=\"/alerts\">Alertas</a><a href=\"/debug\">Debug</a><a href=\"/pair\">Pareamento</a><a href=\"/downloader\">Downloader</a><a href=\"/settings\">Ajustes</a>\
          <form method=\"post\" action=\"/logout\"><button class=\"off\">Sair</button></form></nav>\
          <main><h1>{t}</h1>{body}</main></body></html>",
         t = esc(title)
@@ -690,6 +691,37 @@ async fn rules_post(State(st): S, Form(f): Fields) -> Response {
         )
             .into_response(),
     }
+}
+
+/// Aba Debug: contagem por categoria e as últimas 300 linhas (mais nova primeiro).
+async fn debug_get(State(st): S) -> Html<String> {
+    let q = st.debug.lock().unwrap_or_else(|e| e.into_inner());
+    let mut cats: std::collections::BTreeMap<&str, usize> = Default::default();
+    let mut rows = String::new();
+    for d in q.iter() {
+        *cats.entry(d.cat.as_str()).or_default() += 1;
+    }
+    for d in q.iter().rev() {
+        let bad = d.cat.contains("erro") || d.cat.contains("recusa");
+        rows += &format!(
+            "<tr{}><td>{}</td><td>{}</td><td>{}</td></tr>",
+            if bad { " style=\"color:#c33\"" } else { "" },
+            crate::state::local_hms(d.at),
+            esc(&d.cat),
+            esc(&d.msg)
+        );
+    }
+    let resumo: String = cats
+        .iter()
+        .map(|(c, n)| format!("<code>{}</code> × {n} &nbsp; ", esc(c)))
+        .collect();
+    Html(page(
+        "Debug",
+        &format!(
+            "<div class=\"card\">{resumo}</div>\
+             <table><tr><th>Hora</th><th>Categoria</th><th>Detalhe</th></tr>{rows}</table>"
+        ),
+    ))
 }
 
 async fn alerts_get(State(st): S) -> Html<String> {
@@ -1707,6 +1739,18 @@ mod tests {
         assert!(apply_upload(dir.path(), Platform::TikTok, b"nao e json").is_err());
         assert!(apply_upload(dir.path(), Platform::TikTok, &[0xff, 0xfe]).is_err());
         assert!(!cookies::path(dir.path(), Platform::TikTok).exists());
+    }
+
+    #[tokio::test]
+    async fn debug_page_lists_and_escapes() {
+        let (app, st) = app();
+        st.dbg("baixar_erro_x", "<b>oi</b>");
+        let tok = st.sessions.create();
+        let r = app.oneshot(get("/debug", Some(&tok))).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+        let s = String::from_utf8_lossy(&b);
+        assert!(s.contains("baixar_erro_x") && s.contains("&lt;b&gt;oi"));
     }
 
     #[test]

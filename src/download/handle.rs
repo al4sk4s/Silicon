@@ -114,7 +114,11 @@ pub async fn handle(
     arg: &str,
 ) {
     let chat = ctx.info.source.chat.to_string();
-    let fail = |e: DlError| say(ctx, sent, e.reply());
+    st.dbg("baixar_recebido", &format!("chat {chat}"));
+    let fail = |e: DlError| {
+        st.dbg("baixar_recusa", &format!("{e:?}"));
+        say(ctx, sent, e.reply())
+    };
     // Link do argumento, senão da mensagem citada (RF2).
     let quoted = ctx
         .message
@@ -135,9 +139,13 @@ pub async fn handle(
     match st.dl_limit.check(&chat, std::time::Instant::now(), max) {
         crate::stickers::limit::Verdict::Allow => {}
         crate::stickers::limit::Verdict::DenyFirst => {
+            st.dbg("baixar_recusa", "limite por minuto");
             return say(ctx, sent, "Calma, muitos downloads. Tente daqui a pouco.").await;
         }
-        crate::stickers::limit::Verdict::DenySilent => return,
+        crate::stickers::limit::Verdict::DenySilent => {
+            st.dbg("baixar_recusa", "limite por minuto (silencioso)");
+            return;
+        }
     }
     if !ytdlp::ok() {
         ytdlp::probe().await; // o probe do boot pode ter falhado de forma intermitente
@@ -152,17 +160,23 @@ pub async fn handle(
         return fail(DlError::Other).await;
     };
     // Resposta visual: o usuário vê que está baixando. Falha é ignorada.
-    if let Ok(r) = ctx.react(crate::stickers::variante(REACOES)).await {
-        sent.add(r.message_id.as_str());
+    match ctx.react(crate::stickers::variante(REACOES)).await {
+        Ok(r) => {
+            sent.add(r.message_id.as_str());
+            st.dbg("baixar_reacao", "ok");
+        }
+        Err(e) => st.dbg("baixar_erro_reacao", &e.to_string()),
     }
     let timeout = Duration::from_secs(st.store.dl_timeout_s().unwrap_or(120));
     let got = match ytdlp::fetch(&link, plat, &cookies_dir(), tmp.path(), timeout).await {
         Ok(g) => g,
         Err(e) => {
+            st.dbg("baixar_erro_ytdlp", &format!("{e:?} plataforma {plat:?}"));
             st.push_event("download_erro", &chat);
             return fail(e).await;
         }
     };
+    st.dbg("baixar_ytdlp_ok", &format!("{} bytes", got.size));
     if got.size > MAX_TOTAL {
         return fail(DlError::TooBig).await;
     }
@@ -197,7 +211,8 @@ async fn send(
         .await
     {
         Ok(u) => u,
-        Err(_) => {
+        Err(e) => {
+            st.dbg("baixar_erro_upload", &e.to_string());
             st.push_event("download_erro_upload", chat);
             return say(ctx, sent, "Não consegui enviar").await;
         }
@@ -252,9 +267,15 @@ async fn send(
                 "baixar_video"
             };
             st.push_event(kind, chat);
-            tracing::info!(bytes = got.size, doc, "download enviado");
+            st.dbg(
+                "baixar_enviado",
+                &format!("{} bytes, documento={doc}", got.size),
+            );
         }
-        Err(_) => st.push_event("download_erro_envio", chat),
+        Err(e) => {
+            st.dbg("baixar_erro_envio", &e.to_string());
+            st.push_event("download_erro_envio", chat);
+        }
     }
 }
 

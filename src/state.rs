@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_EVENTS: usize = 200;
+const MAX_DEBUG: usize = 300;
 const MAX_RECENT: usize = 100;
 
 /// Evento do log do painel: horário (unix s), tipo e JID. Sem texto de mensagem.
@@ -14,6 +15,13 @@ pub struct Event {
     pub at: u64,
     pub kind: String,
     pub jid: String,
+}
+
+/// Linha do painel Debug: categoria curta + mensagem (nunca link, texto ou cookie).
+pub struct Dbg {
+    pub at: u64,
+    pub cat: String,
+    pub msg: String,
 }
 
 #[derive(Default)]
@@ -53,6 +61,8 @@ pub struct AppState {
     pub dl_sem: tokio::sync::Semaphore,
     pub status: Mutex<Status>,
     pub events: Mutex<VecDeque<Event>>,
+    /// Anel de diagnóstico mostrado em /debug (só memória).
+    pub debug: Mutex<VecDeque<Dbg>>,
     /// Grupos (jid, assunto) vindos de `list_participating`; só rótulo (RF12).
     pub groups: Mutex<Vec<(String, String)>>,
     /// JIDs que mandaram mensagem recentemente (jid -> unix s). Só em memória.
@@ -124,6 +134,7 @@ impl AppState {
             dl_sem: tokio::sync::Semaphore::new(1),
             status: Mutex::default(),
             events: Mutex::default(),
+            debug: Mutex::default(),
             groups: Mutex::default(),
             recent: Mutex::default(),
             client: Mutex::default(),
@@ -169,6 +180,20 @@ impl AppState {
 
     pub fn lock_pairing(&self) -> std::sync::MutexGuard<'_, Pairing> {
         self.pairing.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Registra um passo/erro para a aba Debug e para o log.
+    pub fn dbg(&self, cat: &str, msg: &str) {
+        tracing::info!(cat, "debug: {msg}");
+        let mut q = self.debug.lock().unwrap_or_else(|e| e.into_inner());
+        if q.len() == MAX_DEBUG {
+            q.pop_front();
+        }
+        q.push_back(Dbg {
+            at: now(),
+            cat: cat.into(),
+            msg: msg.into(),
+        });
     }
 
     pub fn push_event(&self, kind: &str, jid: &str) {

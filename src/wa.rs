@@ -206,6 +206,7 @@ async fn on_message(st: Arc<AppState>, sent: Arc<Sent>, ctx: MessageContext) {
     if owner_only
         && !crate::stickers::parse_cmd(text)
         && crate::stickers::parse_rename(text).is_none()
+        && crate::download::handle::parse_cmd(text).is_none()
     {
         return;
     }
@@ -218,6 +219,7 @@ async fn on_message(st: Arc<AppState>, sent: Arc<Sent>, ctx: MessageContext) {
         return;
     }
     if let Some(arg) = crate::download::handle::parse_cmd(text) {
+        st.dbg("baixar_comando", "chegou ao despacho");
         let min = st.store.delay_min_ms().unwrap_or(1000);
         let max = st.store.delay_max_ms().unwrap_or(2000);
         tokio::time::sleep(pick_delay(min, max)).await;
