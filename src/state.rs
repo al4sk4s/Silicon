@@ -30,6 +30,10 @@ pub struct AppState {
     pub limiter: RateLimiter,
     /// Limite de figurinhas por chat (spec 002).
     pub sticker_limit: crate::stickers::limit::Limiter,
+    /// Limite de downloads por chat (spec 004).
+    pub dl_limit: crate::stickers::limit::Limiter,
+    /// No máximo 1 download simultâneo (RF11).
+    pub dl_sem: tokio::sync::Semaphore,
     pub status: Mutex<Status>,
     pub events: Mutex<VecDeque<Event>>,
     /// Grupos (jid, assunto) vindos de `list_participating`; só rótulo (RF12).
@@ -88,6 +92,8 @@ impl AppState {
             sessions: Sessions::new(std::time::Duration::from_secs(12 * 3600)),
             limiter: RateLimiter::new(),
             sticker_limit: Default::default(),
+            dl_limit: Default::default(),
+            dl_sem: tokio::sync::Semaphore::new(1),
             status: Mutex::default(),
             events: Mutex::default(),
             groups: Mutex::default(),

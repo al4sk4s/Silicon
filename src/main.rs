@@ -1,6 +1,7 @@
 mod auth;
 mod config;
 mod dispatch;
+mod download;
 mod lock;
 mod panel;
 mod roles;
@@ -168,6 +169,7 @@ async fn daemon(dir: &Path) -> Result<(), BoxErr> {
     let session = session.to_str().ok_or("caminho da sessão não é UTF-8")?;
 
     stickers::check::probe().await;
+    download::ytdlp::probe().await;
 
     // Qualquer lado que terminar encerra o processo; wa::run Ok = shutdown pedido.
     tokio::select! {

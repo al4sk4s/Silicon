@@ -84,6 +84,13 @@ async fn on_message(st: Arc<AppState>, sent: Arc<Sent>, ctx: MessageContext) {
         crate::stickers::handle(&ctx, &st, &sent).await;
         return;
     }
+    if let Some(arg) = crate::download::handle::parse_cmd(text) {
+        let min = st.store.delay_min_ms().unwrap_or(1000);
+        let max = st.store.delay_max_ms().unwrap_or(2000);
+        tokio::time::sleep(pick_delay(min, max)).await;
+        crate::download::handle::handle(&ctx, &st, &sent, arg).await;
+        return;
+    }
     if let Some(args) = crate::stickers::parse_rename(text) {
         let min = st.store.delay_min_ms().unwrap_or(1000);
         let max = st.store.delay_max_ms().unwrap_or(2000);
