@@ -26,3 +26,11 @@ Status: implementado (T1–T3 [x], T4 aberta) · Spec: `specs/005-painel-pareame
 - Primeiro acesso por web não vale atrás de proxy reverso na mesma máquina (peer vira loopback): defina a senha antes de expor.
 - T4 (conferir no navegador / LAN por HTTPS autoassinado) aberta.
 - Fora: tema escuro, i18n, desparear pelo painel.
+
+## Emenda RF9 — métricas do sistema (2026-11-20)
+- **Novo `src/metrics.rs` (puro + leitura de /proc):** `Amostra{rss_kb, ticks, threads, mem_disponivel_kb, em: Instant}`; `ler() -> Option<Amostra>` (lê `/proc/self/status` `VmRSS`/`Threads`, `/proc/self/stat` campos 14+15 `utime+stime` — o nome do processo fica entre parênteses, então corta após o último `)` —, `/proc/meminfo` `MemAvailable`); `cpu_pct(ant, atual, hz) -> f32` (Δticks/hz ÷ Δsegundos × 100; pode passar de 100 com várias threads). `hz` = `libc::sysconf(_SC_CLK_TCK)` (libc já é dependência).
+- **`state.rs`:** `AppState.metricas: Mutex<Option<(Amostra, Option<f32>)>>` (última leitura e a CPU % dela) e `boot: Instant` (uptime). A CPU % usa a leitura anterior; 1ª leitura mostra "—". Duas abas abertas dividem a mesma amostra (janela fica ≥ 1 s; menor que isso reaproveita o valor anterior).
+- **`panel.rs`:** rota `GET /metrics` (login, `no-store`) devolve o fragmento; `index` inclui o bloco `<div id="m">` e `setInterval` de 5 s (mesmo padrão do `/pair/state`, recarrega se redirecionar para o login).
+- **Formato:** `RAM 84 MiB · CPU 1,2 % · 14 threads · uptime 3h12 · livre no sistema 5,1 GiB`.
+- **Testes:** `parse` de textos fixos de `/proc`; `cpu_pct` com valores conhecidos; `/proc` vazio → `None`; `oneshot` `/metrics` sem login redireciona e com login traz "RAM".
+- **Risco:** `/proc` é só Linux (ok: Windows está fora). RSS ≠ memória total (não conta arquivos mapeados compartilhados): é a mesma que `ps`/`htop` mostram.

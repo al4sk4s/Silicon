@@ -76,7 +76,7 @@ silicon set-password   # ou pule: o 1º acesso ao painel (loopback) pede a senha
 silicon
 
 # 3. abra o painel na sua rede e escolha os chats
-#    https://<ip-do-servidor>:8080
+#    https://<ip-do-servidor>:8787
 ```
 
 No WhatsApp, no chat que você liberou:

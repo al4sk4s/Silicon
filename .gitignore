@@ -54,3 +54,7 @@ Thumbs.db
 .vscode/
 *.swp
 *~
+
+# Memória gerada por hooks (ruído)
+.claude/memory/LAST_COMPACTION.md
+.claude/memory/SUBAGENT_REPORTS.md

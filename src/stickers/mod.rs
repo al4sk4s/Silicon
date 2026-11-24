@@ -119,7 +119,20 @@ const LIMITE_CAMPO: &[&str] = &[
     "Limite de 64 caracteres por campo, reduz um pouco",
     "Muito longo: até 64 caracteres no nome e no autor",
 ];
+const FORMATO: &[&str] = &[
+    "Formato não suportado",
+    "Não conheço esse formato de mídia",
+    "Esse formato não rola pra figurinha",
+    "Não consegui ler essa mídia, o formato é estranho",
+    "Formato esquisito, manda em outro (jpg, png, mp4)",
+    "Não abri esse arquivo, tenta outro formato",
+    "Esse tipo de arquivo eu não entendo",
+    "Formato não aceito, tenta outra mídia",
+];
+/// Reação rápida ao comando (antes da conversão, que pode levar vários segundos).
+const REACOES: &[&str] = &["🚰", "⤵️", "⤴️", "↪️", "↩️", "🔄", "🔃", "🔜"];
 const GRUPOS: &[&[&str]] = &[
+    FORMATO,
     CALMA,
     USO_S,
     BAIXAR,
@@ -140,7 +153,7 @@ fn vary(t: &str) -> &str {
         .map_or(t, |g| variante(g))
 }
 
-fn variante(opcoes: &'static [&'static str]) -> &'static str {
+pub(crate) fn variante(opcoes: &'static [&'static str]) -> &'static str {
     use rand::Rng;
     opcoes[rand::rng().random_range(0..opcoes.len())]
 }
@@ -209,17 +222,21 @@ pub fn pick_source(msg: &wa::Message) -> Result<Source, SrcErr> {
 const MAX_IMG: u64 = 10 * 1024 * 1024;
 const MAX_VID: u64 = 32 * 1024 * 1024;
 
-/// Mídia -> (WebP, segundos do teto vencedor; 0 em imagem). Só memória (imagem por pipe,
-/// vídeo por memfd); nada vai a disco nem a log.
-pub async fn make(kind: Kind, bytes: &[u8]) -> Result<(Vec<u8>, u32), &'static str> {
+/// Mídia -> WebP. Só memória (imagem por pipe, vídeo por memfd); nada vai a disco nem a log.
+pub async fn make(kind: Kind, bytes: &[u8], malvin: bool) -> Result<Vec<u8>, &'static str> {
     use convert::ConvErr;
     let r = match kind {
-        Kind::Image => convert::to_static(bytes).await.map(|w| (w, 0)),
-        Kind::Video => convert::to_animated(bytes).await.map(|a| (a.webp, a.secs)),
+        Kind::Image => convert::to_static(bytes).await,
+        Kind::Video => convert::to_animated(bytes, malvin)
+            .await
+            .map(|(b, fps, q)| {
+                tracing::info!(fps, q, "figurinha animada"); // RFA3: sem conteúdo
+                b
+            }),
     };
     r.map_err(|e| match e {
         ConvErr::TooBig => "Mídia pesada demais",
-        ConvErr::Unsupported => "Formato não suportado",
+        ConvErr::Unsupported => FORMATO[0],
         ConvErr::NoFfmpeg => "ffmpeg ausente",
     })
 }
@@ -284,6 +301,11 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
     if file_len.is_some_and(|n| n > max_plain) {
         return reply("Mídia pesada demais").await;
     }
+    // Resposta visual imediata (já passou o atraso P8); a figurinha vem depois. Falha é ignorada.
+    if let Ok(r) = ctx.react(variante(REACOES)).await {
+        sent.add(r.message_id.as_str());
+    }
+    let t0 = std::time::Instant::now();
     let limits = DownloadLimits::new(max_plain + 65_536, max_plain);
     let bytes = match ctx.client.download(dl, limits).await {
         Ok(b) => b,
@@ -294,18 +316,28 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
             return reply("Não consegui baixar").await;
         }
     };
-    let (webp, secs) = match make(src.kind, &bytes).await {
+    let dl_ms = t0.elapsed().as_millis();
+    let malvin = st.store.video_sticker_mode().is_ok_and(|m| m == "malvin");
+    let t1 = std::time::Instant::now();
+    let webp = match make(src.kind, &bytes, malvin).await {
         Ok(w) => w,
         Err(m) => {
             st.push_event("figurinha_erro", &chat);
             return reply(m).await;
         }
     };
+    // Só tempos e tipo (sem conteúdo): mostra onde está a demora.
+    tracing::info!(
+        video = src.kind == Kind::Video,
+        dl_ms,
+        conv_ms = t1.elapsed().as_millis(),
+        "figurinha: etapas"
+    );
     // Som (spec 005): só vídeo, flag ligada; falha do ffmpeg = sticker mudo + aviso.
     let mut sound = Sound::None;
     let mut audio_failed = false;
     if matches!(src.kind, Kind::Video) && st.store.sticker_sound().unwrap_or(true) {
-        let cap = secs.min(st.store.sticker_sound_max_s().unwrap_or(10));
+        let cap = ANIM_SECS.min(st.store.sticker_sound_max_s().unwrap_or(10));
         match convert::extract_audio(&bytes, cap).await {
             Ok(Some(ogg)) => sound = Sound::New(ogg, cap),
             Ok(None) => {}
@@ -331,6 +363,8 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
 const NO_SOUND: &str = "Figurinha sem som: não consegui anexar o áudio";
 
 const MAX_STK: u64 = 2 * 1024 * 1024;
+/// A escada de vídeo nunca corta a duração (10 s); o som segue o mesmo teto.
+const ANIM_SECS: u32 = 10;
 
 /// Figurinha citada pelo `/rename`; Err = resposta pronta. Separada de `handle_rename` porque
 /// o `MessageContext` não se monta em teste (exigiria o feature `test-support`, proibido).
@@ -378,6 +412,7 @@ pub async fn handle_rename(
             return reply(ctx, sent, "Não consegui baixar").await;
         }
     };
+    tracing::info!(had_audio = stk.audio.is_some(), "rename: figurinha citada");
     // o som já está no ar (url/chave do áudio vêm no sticker citado): só repassa
     let sound = match &stk.audio {
         Some(wa::message::sticker_message::Audio::AudioMessage(a)) => Sound::Keep(a.clone()),
@@ -449,6 +484,7 @@ async fn send_webp(
         }
     };
     let animated = whatsapp_rust::webp::is_animated(&webp);
+    let t_up = std::time::Instant::now();
     let up = match ctx
         .client
         .upload(
@@ -465,6 +501,7 @@ async fn send_webp(
             return false;
         }
     };
+    tracing::info!(up_ms = t_up.elapsed().as_millis(), "figurinha: upload");
     let mut s = wa::message::StickerMessage::default();
     s.url = Some(up.url);
     s.direct_path = Some(up.direct_path);
@@ -504,6 +541,11 @@ mod tests {
             Some(wa::message::sticker_message::Audio::AudioMessage(ref m)) if m.seconds == Some(7)
         ));
         assert!(super::with_audio(s, None).audio.is_none());
+    }
+
+    #[test]
+    fn ha_8_reacoes() {
+        assert_eq!(super::REACOES.len(), 8);
     }
 
     #[test]
@@ -605,8 +647,8 @@ mod tests {
         let png = media(&["-frames:v", "1", "-f", "image2pipe", "-c:v", "png"]);
         let mkv = media(&["-c:v", "mpeg4", "-f", "matroska"]);
         let before = snapshot();
-        assert!(make(Kind::Image, &png).await.is_ok());
-        assert!(make(Kind::Video, &mkv).await.is_ok());
+        assert!(make(Kind::Image, &png, false).await.is_ok());
+        assert!(make(Kind::Video, &mkv, false).await.is_ok());
         assert_eq!(before, snapshot());
     }
 
