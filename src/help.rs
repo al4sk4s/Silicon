@@ -37,9 +37,10 @@ pub const CMDS: &[Cmd] = &[
     Cmd {
         name: "baixar",
         alias: &["dl", "download"],
-        short: "baixa vídeo do TikTok ou Instagram",
+        short: "baixa vídeos e fotos do TikTok, Instagram e Facebook",
         long: "Mande */baixar link* ou responda uma mensagem que tenha o link.\n\
-               • Aceita TikTok e Instagram (Reels).\n\
+               • Aceita TikTok, Instagram e Facebook.\n\
+               • Vídeos e também fotos/carrosséis (chegam como álbum, até 10 itens por link).\n\
                • O vídeo vem na melhor qualidade; acima de 64 MB vai como arquivo.\n\
                • Exemplo: _/baixar https://www.tiktok.com/..._\n\
                • Apelidos: /dl, /download.",
@@ -79,6 +80,7 @@ pub const NOVIDADES: &[&str] = &[
     "Figurinhas animadas com som",
     "Download de vídeos do TikTok e Instagram",
     "Reação de emoji enquanto processa",
+    "Download de fotos e álbuns (e vídeos do Facebook)",
 ];
 
 const GITHUB: &str = "https://github.com/al4sk4s/Silicon";

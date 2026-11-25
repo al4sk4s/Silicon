@@ -64,6 +64,9 @@ pub fn classify(stderr: &str) -> DlError {
         DlError::Other
     } else if has(&[
         "empty media response",
+        "no video formats",
+        "there is no video",
+        "no video in this post",
         "unsupported url",
         "ip address is blocked",
         "404",

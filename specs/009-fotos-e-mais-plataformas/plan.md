@@ -1,12 +1,13 @@
 # Plano 009 — `/baixar` com fotos, carrosséis e Facebook (o COMO)
 
-Status: plano (2026-11-24) · Spec: `specs/009-fotos-e-mais-plataformas/spec.md` · Constituição v1.1.0 ·
+Status: implementado, falta validar com WhatsApp real (T8-T11) (2026-11-24) · Spec: `specs/009-fotos-e-mais-plataformas/spec.md` · Constituição v1.1.0 ·
 whatsapp-rust `eeb24da` (pin fixo, sem atualizar).
 
 ## Decisões a confirmar
 1. **`gallery-dl` como binário externo** (P7: zero crate). Instalação é do dono; o servidor ainda não tem
    (`pacman` não achou). Sem ele, só o caminho yt-dlp funciona e foto responde "indisponível" (como `DlError::Missing`).
-2. **Álbum "de verdade"** exige mensagem-pai + filhos associados. Faço do jeito do WhatsApp Web; se o celular
+2. **Fallback do yt-dlp:** o gallery-dl só roda quando o yt-dlp devolve `NotFound` (inclui "no video formats"); não há variante nova de erro.
+3. **Álbum "de verdade"** exige mensagem-pai + filhos associados. Faço do jeito do WhatsApp Web; se o celular
    não agrupar (`[WA]`), o plano B é mandar as fotos soltas, uma a uma (mesma rajada controlada). Decisão após o teste.
 3. **Facebook entra só como host** no `validate`. Cookies do Facebook (vídeo privado) ficam **fora** desta
    spec: `Platform::Facebook` não ganha UI de cookies agora (menor mudança). Público funciona sem.
@@ -48,7 +49,7 @@ whatsapp-rust `eeb24da` (pin fixo, sem atualizar).
   `wrap_as_album_child(img, parent_key)`, atraso 1–2 s entre envios (`pause`, como no resto). Carrossel misto (decisão do
   dono, 2026-11-24): vídeos **entram no mesmo álbum**: `expected_video_count = n_vídeos`, cada vídeo
   recodificado (`ensure_compatible`), enviado como `VideoMessage` e embrulhado com `wrap_as_album_child`; ordem
-  original do post. Vídeo > 64 MB não cabe no álbum: sai solto como documento, depois. Foto > 16 MB vira `DocumentMessage` (fora do álbum).
+  original do post. Vídeo > 64 MB não cabe no álbum: sai solto como documento, depois. Foto > 16 MB é descartada com Debug `baixar_foto_grande` (shortcut: rara; documento se aparecer na prática).
 - **`src/download/url.rs` / `mod.rs`**: `Platform::Facebook` (`facebook.com`, `fb.watch`, `fb.com`); `name()` →
   `"facebook"`. `cookies.rs`: ramo `Facebook` com domínio `facebook.com` para o `json_to_netscape` (compila;
   UI de cookies não ganha item). `config.rs`/painel: nada.

@@ -32,6 +32,8 @@ pub fn validate(text: &str) -> Result<(Platform, String), DlError> {
         Platform::TikTok
     } else if is("instagram.com") || is("instagr.am") {
         Platform::Instagram
+    } else if is("facebook.com") || is("fb.com") || is("fb.watch") {
+        Platform::Facebook
     } else {
         return Err(DlError::BadHost);
     };
@@ -63,12 +65,21 @@ mod tests {
         ] {
             assert!(matches!(plat(u), Ok(Platform::Instagram)), "{u}");
         }
+        for u in [
+            "https://www.facebook.com/reel/1",
+            "https://m.facebook.com/x",
+            "https://fb.watch/abc/",
+        ] {
+            assert!(matches!(plat(u), Ok(Platform::Facebook)), "{u}");
+        }
     }
 
     #[test]
     fn hosts_maus() {
         for u in [
             "https://evil-tiktok.com/x",
+            "https://facebook.com.evil.io/x",
+            "https://notfacebook.com/x",
             "https://tiktok.com.evil.com/x",
             "https://tiktok.com@evil.com/x",
             "https://evil.com@tiktok.com/x",

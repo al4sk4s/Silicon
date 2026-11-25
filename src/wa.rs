@@ -151,7 +151,7 @@ async fn handle_chat_cmd(
 }
 
 /// Atraso configurado antes de responder (P8).
-async fn pause(st: &AppState) {
+pub(crate) async fn pause(st: &AppState) {
     let min = st.store.delay_min_ms().unwrap_or(1000);
     let max = st.store.delay_max_ms().unwrap_or(2000);
     tokio::time::sleep(pick_delay(min, max)).await;

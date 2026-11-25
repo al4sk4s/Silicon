@@ -1,5 +1,6 @@
-//! Spec 004: `/baixar` (TikTok e Instagram via yt-dlp externo).
+//! Spec 004/009: `/baixar` (TikTok, Instagram e Facebook via yt-dlp e gallery-dl externos).
 pub mod cookies;
+pub mod gallery;
 pub mod handle;
 pub mod url;
 pub mod ytdlp;
@@ -14,6 +15,7 @@ pub fn cookies_dir() -> std::path::PathBuf {
 pub enum Platform {
     TikTok,
     Instagram,
+    Facebook,
 }
 
 impl Platform {
@@ -22,6 +24,7 @@ impl Platform {
         match self {
             Platform::TikTok => "tiktok",
             Platform::Instagram => "instagram",
+            Platform::Facebook => "facebook",
         }
     }
 }
@@ -40,11 +43,11 @@ pub enum DlError {
 }
 
 const BAD_HOST: &[&str] = &[
-    "Só aceito links de TikTok e Instagram.",
-    "Esse link eu não pego, só TikTok e Instagram.",
-    "Link estranho: aqui só vai TikTok ou Instagram.",
-    "Não reconheci esse link, manda de TikTok ou Instagram.",
-    "Desse site eu não baixo, só TikTok e Instagram.",
+    "Só aceito links de TikTok, Instagram e Facebook.",
+    "Esse link eu não pego, só TikTok, Instagram e Facebook.",
+    "Link estranho: aqui só vai TikTok, Instagram ou Facebook.",
+    "Não reconheci esse link, manda de TikTok, Instagram ou Facebook.",
+    "Desse site eu não baixo, só TikTok, Instagram e Facebook.",
 ];
 const NO_URL: &[&str] = &[
     "Uso: /baixar <link> (ou responda uma mensagem com o link).",
@@ -63,7 +66,7 @@ impl DlError {
             DlError::LoginRequired => "Esse conteúdo exige login.",
             DlError::NotFound => "Não achei esse vídeo (link quebrado, privado ou removido).",
             DlError::Timeout => "Demorou demais, desisti.",
-            DlError::Missing => "yt-dlp ausente.",
+            DlError::Missing => "Ferramenta de download ausente.",
             DlError::TooBig => "Vídeo grande demais.",
             DlError::Busy => "Já estou baixando outro, tente de novo daqui a pouco.",
             DlError::Other => "Não consegui baixar esse vídeo.",

@@ -186,6 +186,7 @@ pub fn json_to_netscape(json: &str, plat: Platform) -> Result<String, String> {
     let base = match plat {
         Platform::TikTok => "tiktok.com",
         Platform::Instagram => "instagram.com",
+        Platform::Facebook => "facebook.com",
     };
     let mut out = String::from("# Netscape HTTP Cookie File\n");
     let mut kept = 0;

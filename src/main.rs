@@ -186,6 +186,7 @@ async fn daemon(dir: &Path) -> Result<(), BoxErr> {
 
     stickers::check::probe().await;
     download::ytdlp::probe().await;
+    download::gallery::probe().await;
 
     // Qualquer lado que terminar encerra o processo; wa::run Ok = shutdown pedido.
     tokio::select! {

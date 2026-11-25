@@ -1,6 +1,6 @@
 # Spec 009 — `/baixar` com fotos, carrosséis e mais plataformas
 
-Status: **rascunho** (2026-11-24) · Depende de: 004-downloader, 008 (ajuda) · Constituição v1.1.0
+Status: **implementado, falta validar com WhatsApp real (T8-T11)** (2026-11-24) · Depende de: 004-downloader, 008 (ajuda) · Constituição v1.1.0
 
 ## Por quê
 O `/baixar` só pega vídeo (yt-dlp) de TikTok e Instagram. Post só de fotos, carrossel (fotos ou misto) e
@@ -21,7 +21,7 @@ vídeos do Facebook não funcionam. O dono quer que "um post com 5 fotos" chegue
   1 linha avisando). Atraso 1–2 s entre os envios (P8).
 - **RF4 Mídia mista:** fotos e vídeos do carrossel vão **no mesmo álbum**, na ordem do post (decisão do dono, 2026-11-24). Vídeo > 64 MB sai solto como documento.
 - **RF5 Imagens:** envia como veio (JPEG/PNG/WebP); só converte para JPEG se o formato não for aceito.
-  Foto > 16 MB vai como documento. Limite de 100 MB total por comando (mesmo teto do vídeo).
+  Foto > 16 MB é ignorada (registrada no Debug; rara). Limite de 100 MB total por comando (mesmo teto do vídeo).
 - **RF6 Cookies:** `gallery-dl` usa o mesmo `data/cookies/<plat>.txt` (cópia 0600 no tempdir, apagada ao fim).
 - **RF7 Falhas:** as 5 variações de resposta já existentes (link ruim, não encontrado, login necessário,
   ocupado, tempo esgotado). Sem laço, sem nova tentativa automática.
