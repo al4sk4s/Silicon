@@ -636,7 +636,7 @@ async fn send_items(
             Err(e) => st.dbg("baixar_erro_envio", &e.to_string()),
         }
         if parent_key.is_some() {
-            tokio::time::sleep(Duration::from_millis(150)).await;
+            tokio::time::sleep(crate::wa::pick_delay(150, 250)).await;
         }
     }
     for (n, it) in loose.iter().enumerate() {

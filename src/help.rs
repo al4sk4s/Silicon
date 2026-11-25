@@ -78,9 +78,9 @@ pub const CMDS: &[Cmd] = &[
 /// Seção "Novidades" da bio; atualizar a cada spec que lance função visível.
 pub const NOVIDADES: &[&str] = &[
     "Figurinhas animadas com som",
-    "Download de vídeos do TikTok e Instagram",
+    "Download de vídeos e fotos (TikTok, Instagram e Facebook)",
+    "Álbum de fotos de uma vez, como no WhatsApp",
     "Reação de emoji enquanto processa",
-    "Download de fotos e álbuns (e vídeos do Facebook)",
 ];
 
 const GITHUB: &str = "https://github.com/al4sk4s/Silicon";
