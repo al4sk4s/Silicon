@@ -30,6 +30,11 @@ config.local.*
 *.local.toml
 *.local.json
 
+# Cookies de login do downloader (credencial, constituição P4)
+/cookies*
+*cookies*.txt
+cookies/
+
 # Certificado autoassinado do painel e hash de senha
 tls/
 certs/
@@ -54,3 +59,7 @@ Thumbs.db
 .vscode/
 *.swp
 *~
+
+# Memória gerada por hooks (ruído)
+.claude/memory/LAST_COMPACTION.md
+.claude/memory/SUBAGENT_REPORTS.md

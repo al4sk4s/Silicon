@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_EVENTS: usize = 200;
+const MAX_DEBUG: usize = 300;
 const MAX_RECENT: usize = 100;
 
 /// Evento do log do painel: horário (unix s), tipo e JID. Sem texto de mensagem.
@@ -14,6 +15,13 @@ pub struct Event {
     pub at: u64,
     pub kind: String,
     pub jid: String,
+}
+
+/// Linha do painel Debug: categoria curta + mensagem (nunca link, texto ou cookie).
+pub struct Dbg {
+    pub at: u64,
+    pub cat: String,
+    pub msg: String,
 }
 
 #[derive(Default)]
@@ -47,8 +55,14 @@ pub struct AppState {
     pub limiter: RateLimiter,
     /// Limite de figurinhas por chat (spec 002).
     pub sticker_limit: crate::stickers::limit::Limiter,
+    /// Limite de downloads por chat (spec 004).
+    pub dl_limit: crate::stickers::limit::Limiter,
+    /// No máximo 1 download simultâneo (RF11).
+    pub dl_sem: tokio::sync::Semaphore,
     pub status: Mutex<Status>,
     pub events: Mutex<VecDeque<Event>>,
+    /// Anel de diagnóstico mostrado em /debug (só memória).
+    pub debug: Mutex<VecDeque<Dbg>>,
     /// Grupos (jid, assunto) vindos de `list_participating`; só rótulo (RF12).
     pub groups: Mutex<Vec<(String, String)>>,
     /// JIDs que mandaram mensagem recentemente (jid -> unix s). Só em memória.
@@ -57,6 +71,13 @@ pub struct AppState {
     pub client: Mutex<Option<std::sync::Arc<whatsapp_rust::Client>>>,
     /// Painel servido por HTTPS: cookie ganha `Secure`.
     pub https: bool,
+    /// Última amostra de RAM/CPU (RF9 da spec 005) e o instante de início (uptime).
+    pub metricas: crate::metrics::Slot,
+    pub boot: std::time::Instant,
+    /// Spec 003: detector compilado (trocado sem reiniciar), dedupe e limite por hora.
+    pub detector: std::sync::RwLock<std::sync::Arc<crate::detector::Detector>>,
+    pub dedupe: Mutex<crate::alerta::Dedupe>,
+    pub limite: Mutex<crate::alerta::Limite>,
 }
 
 fn local_tm(secs: u64) -> libc::tm {
@@ -101,7 +122,7 @@ pub fn now() -> u64 {
 
 impl AppState {
     pub fn new(store: Store, roles: ChatRoles, https: bool) -> Self {
-        AppState {
+        let st = AppState {
             store,
             roles,
             sessions: Sessions::new(std::time::Duration::from_secs(12 * 3600)),
@@ -109,17 +130,70 @@ impl AppState {
             sticker_limit: Default::default(),
             pairing: Mutex::default(),
             restart: Default::default(),
+            dl_limit: Default::default(),
+            dl_sem: tokio::sync::Semaphore::new(1),
             status: Mutex::default(),
             events: Mutex::default(),
+            debug: Mutex::default(),
             groups: Mutex::default(),
             recent: Mutex::default(),
             client: Mutex::default(),
             https,
+            metricas: Mutex::default(),
+            boot: std::time::Instant::now(),
+            detector: Default::default(),
+            dedupe: Mutex::new(crate::alerta::Dedupe::novo()),
+            limite: Mutex::default(),
+        };
+        // Regra salva inválida não derruba o boot: detector vazio e aviso no log.
+        if let Err(e) = st.recarrega_detector() {
+            tracing::warn!("detector vazio: {e}");
         }
+        st
+    }
+
+    /// Recompila regras e ignorar do banco e troca o detector. Chamar após toda escrita no painel.
+    pub fn recarrega_detector(&self) -> Result<(), String> {
+        let regras: Vec<_> = self
+            .store
+            .rules()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|(id, nome, padrao, ativa)| crate::detector::Regra {
+                id,
+                nome,
+                padrao,
+                ativa,
+            })
+            .collect();
+        let ign: Vec<String> = self
+            .store
+            .ignores()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|(_, p)| p)
+            .collect();
+        let d = crate::detector::Detector::novo(&regras, &ign)?;
+        *self.detector.write().unwrap_or_else(|e| e.into_inner()) = std::sync::Arc::new(d);
+        Ok(())
     }
 
     pub fn lock_pairing(&self) -> std::sync::MutexGuard<'_, Pairing> {
         self.pairing.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Registra um passo/erro para a aba Debug e para o log.
+    pub fn dbg(&self, cat: &str, msg: &str) {
+        tracing::info!(cat, "debug: {msg}");
+        let mut q = self.debug.lock().unwrap_or_else(|e| e.into_inner());
+        if q.len() == MAX_DEBUG {
+            q.pop_front();
+        }
+        q.push_back(Dbg {
+            at: now(),
+            cat: cat.into(),
+            msg: msg.into(),
+        });
     }
 
     pub fn push_event(&self, kind: &str, jid: &str) {

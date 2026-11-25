@@ -1,7 +1,13 @@
+mod alerta;
 mod auth;
 mod config;
+mod detector;
 mod dispatch;
+mod download;
+mod help;
 mod lock;
+mod metrics;
+mod monitor;
 mod panel;
 mod roles;
 mod state;
@@ -139,6 +145,16 @@ async fn daemon(dir: &Path) -> Result<(), BoxErr> {
     let roles = Arc::new(RwLock::new(Default::default()));
     let st = Arc::new(AppState::new(store, roles, https));
     st.reload_roles()?;
+    // Retenção do histórico de alertas (spec 003, RF6): na partida e a cada hora.
+    let purga = st.clone();
+    tokio::spawn(async move {
+        let mut t = tokio::time::interval(std::time::Duration::from_secs(3600));
+        loop {
+            t.tick().await; // o 1º tick é imediato: cobre a partida
+            let dias = purga.store.retencao_dias().unwrap_or(7);
+            let _ = purga.store.purge_alerts(dias, state::now());
+        }
+    });
     let app: IntoMakeServiceWithConnectInfo<_, SocketAddr> =
         panel::router(st.clone()).into_make_service_with_connect_info::<SocketAddr>();
 
@@ -169,6 +185,8 @@ async fn daemon(dir: &Path) -> Result<(), BoxErr> {
     let session = session.to_str().ok_or("caminho da sessão não é UTF-8")?;
 
     stickers::check::probe().await;
+    download::ytdlp::probe().await;
+    download::gallery::probe().await;
 
     // Qualquer lado que terminar encerra o processo; wa::run Ok = shutdown pedido.
     tokio::select! {

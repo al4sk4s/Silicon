@@ -14,20 +14,27 @@ pub enum ConvErr {
     NoFfmpeg,
 }
 
-/// Um ffmpeg por vez.
+/// Um ffmpeg de vídeo por vez.
 static SEM: Semaphore = Semaphore::const_new(1);
+/// Imagem leva ~0,2 s: fila própria, para não esperar um vídeo de 10+ s.
+static SEM_IMG: Semaphore = Semaphore::const_new(2);
 
 const STATIC_MAX: usize = 100_000;
 const ANIM_MAX: usize = 500_000;
 
-/// (q, fps, segundos, escala)
-const ANIM_LADDER: [(u8, u8, u8, u16); 6] = [
-    (60, 15, 10, 512),
-    (40, 15, 10, 512),
-    (40, 12, 8, 512),
-    (30, 10, 6, 512),
-    (30, 10, 4, 512),
-    (25, 8, 4, 384),
+/// (fps, q): primeiro baixa a qualidade, depois o fps. Duração (10 s) e 512x512 nunca mudam.
+/// Medido com um vídeo real de 10 s e muito movimento (23/11/2026): 15 fps q0 ≈ 480 KB, 12 fps q0 ≈ 385 KB;
+/// vídeo assim só cabe nos degraus de baixo (borrado); vídeo calmo para nos de cima.
+const ANIM_LADDER: [(u8, u8); 9] = [
+    (20, 50),
+    (20, 25),
+    (15, 40),
+    (15, 20),
+    (15, 5),
+    (15, 0),
+    (12, 0),
+    (10, 0),
+    (8, 0),
 ];
 
 enum Run {
@@ -46,16 +53,33 @@ fn fix_riff(mut out: Vec<u8>) -> Option<Vec<u8>> {
     Some(out)
 }
 
-fn filter(side: u16) -> String {
-    format!("scale={side}:{side},setsar=1,pad=512:512:-1:-1:color=0x00000000,format=rgba")
-}
+/// Modo "malvin" (como o bot MALVIN-XD): baixa para 320 px e sobe para 512 (canvas 512x512 mantido),
+/// 15 fps, qualidade alta primeiro; mais leve e mais borrado. Mesma regra: 10 s inteiros.
+const MALVIN_LADDER: [(u8, u8); 7] = [
+    (15, 75),
+    (15, 50),
+    (15, 30),
+    (15, 10),
+    (15, 0),
+    (12, 0),
+    (10, 0),
+];
+const MALVIN_FILTER: &str = "scale=320:320,scale=512:512,setsar=1,format=rgba";
+
+/// Estica para o quadrado (sem barras nem encolher): a tela é sempre 512x512.
+const FILTER: &str = "scale=512:512,setsar=1,format=rgba";
 
 /// Roda o ffmpeg; `stdin` só para imagem. O stderr não é capturado (nunca logamos conteúdo).
-async fn run(args: Vec<String>, stdin: Option<&[u8]>, secs: u64) -> Result<Vec<u8>, Run> {
+async fn run(
+    args: Vec<String>,
+    stdin: Option<&[u8]>,
+    secs: u64,
+    fmt: &str,
+) -> Result<Vec<u8>, Run> {
     let mut child = Command::new("ffmpeg")
         .args(["-hide_banner", "-v", "error"])
         .args(&args)
-        .args(["-f", "webp", "pipe:1"])
+        .args(["-f", fmt, "pipe:1"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -93,16 +117,16 @@ async fn run(args: Vec<String>, stdin: Option<&[u8]>, secs: u64) -> Result<Vec<u
 
 /// Imagem (PNG/JPEG/WebP...) -> WebP 512x512 estático, <= 100.000 B.
 pub async fn to_static(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
-    let _g = SEM.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
+    let _g = SEM_IMG.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
     for q in [75, 50, 30] {
         let args = ["-i", "pipe:0", "-frames:v", "1", "-vf"]
             .map(String::from)
             .into_iter()
-            .chain([filter(512)])
+            .chain([FILTER.to_string()])
             .chain(["-c:v", "libwebp", "-lossless", "0", "-q:v"].map(String::from))
             .chain([q.to_string()])
             .collect();
-        match run(args, Some(bytes), 5).await {
+        match run(args, Some(bytes), 5, "webp").await {
             Err(Run::NoFfmpeg) => return Err(ConvErr::NoFfmpeg),
             Err(Run::Fail) => return Err(ConvErr::Unsupported),
             Err(Run::Timeout) => continue,
@@ -117,45 +141,185 @@ pub async fn to_static(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
     Err(ConvErr::TooBig)
 }
 
+/// Uma tentativa da escada. `Some(bytes)` se coube no teto; timeout conta como "não coube".
+async fn attempt(
+    path: String,
+    fps: u8,
+    q: u8,
+    filter: &'static str,
+) -> Result<Option<Vec<u8>>, ConvErr> {
+    let args = vec![
+        "-i".into(),
+        path,
+        "-an".into(),
+        "-t".into(),
+        "10".into(),
+        "-vf".into(),
+        format!("fps={fps},{filter}"),
+        "-c:v".into(),
+        "libwebp".into(),
+        "-lossless".into(),
+        "0".into(),
+        "-compression_level".into(),
+        "5".into(), // medido: ~5% menor que 4, ~7% mais lento
+        "-q:v".into(),
+        q.to_string(),
+        "-loop".into(),
+        "0".into(),
+    ];
+    match run(args, None, 25, "webp").await {
+        Err(Run::NoFfmpeg) => Err(ConvErr::NoFfmpeg),
+        Err(Run::Fail) => Err(ConvErr::Unsupported),
+        Err(Run::Timeout) => Ok(None),
+        Ok(out) => {
+            let out = fix_riff(out).ok_or(ConvErr::Unsupported)?;
+            Ok((out.len() <= ANIM_MAX).then_some(out))
+        }
+    }
+}
+
+/// Roda os degraus `idxs` ao mesmo tempo (o encoder WebP usa ~1 núcleo por processo).
+async fn round(
+    path: &str,
+    filter: &'static str,
+    combos: &[(u8, u8)],
+) -> Result<Vec<Option<Vec<u8>>>, ConvErr> {
+    let tasks: Vec<_> = combos
+        .iter()
+        .map(|&(fps, q)| tokio::spawn(attempt(path.to_string(), fps, q, filter)))
+        .collect();
+    let mut out = Vec::new();
+    for t in tasks {
+        out.push(t.await.map_err(|_| ConvErr::NoFfmpeg)??);
+    }
+    Ok(out)
+}
+
 /// Vídeo/GIF -> WebP animado 512x512, <= 500.000 B. Entrada sempre por `memfd::MemFile`.
-pub async fn to_animated(bytes: &[u8]) -> Result<Vec<u8>, ConvErr> {
+/// Devolve também (fps, q) usados, para o log.
+/// Busca em até 2 rodadas de 3 ffmpeg em paralelo: sonda o topo, o meio e o fim da escada e,
+/// se o topo não coube, refina entre a sonda anterior e a primeira que coube (vale o degrau de
+/// melhor qualidade que coube, igual à descida um a um, só que ~3x mais rápida).
+pub async fn to_animated(bytes: &[u8], malvin: bool) -> Result<(Vec<u8>, u8, u8), ConvErr> {
+    let (ladder, filter): (&'static [(u8, u8)], &'static str) = if malvin {
+        (&MALVIN_LADDER, MALVIN_FILTER)
+    } else {
+        (&ANIM_LADDER, FILTER)
+    };
     let _g = SEM.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
     // Vivo até o fim: o ffmpeg lê de /proc/self/fd/N (moov no fim não importa).
     let mem = super::memfd::MemFile::new(bytes).map_err(|_| ConvErr::Unsupported)?;
-    for (q, fps, secs, side) in ANIM_LADDER {
-        let args = vec![
-            "-i".into(),
-            mem.path(),
-            "-an".into(),
-            "-t".into(),
-            secs.to_string(),
-            "-vf".into(),
-            format!("fps={fps},{}", filter(side)),
-            "-c:v".into(),
-            "libwebp".into(),
-            "-lossless".into(),
-            "0".into(),
-            "-compression_level".into(),
-            "3".into(),
-            "-q:v".into(),
-            q.to_string(),
-            "-loop".into(),
-            "0".into(),
-        ];
-        match run(args, None, 15).await {
-            Err(Run::NoFfmpeg) => return Err(ConvErr::NoFfmpeg),
-            Err(Run::Fail) => return Err(ConvErr::Unsupported),
-            Err(Run::Timeout) => continue,
-            Ok(out) => {
-                let out = fix_riff(out).ok_or(ConvErr::Unsupported)?;
-                if out.len() <= ANIM_MAX {
-                    return Ok(out);
-                }
+    let path = mem.path();
+    let n = ladder.len();
+    let probes = [0, (n - 1) / 2, n - 1];
+    let mut res = round(&path, filter, &probes.map(|i| ladder[i])).await?;
+    let k = res
+        .iter()
+        .position(Option::is_some)
+        .ok_or(ConvErr::TooBig)?;
+    let mut pick = (probes[k], res[k].take().ok_or(ConvErr::TooBig)?);
+    if k > 0 {
+        let between: Vec<usize> = (probes[k - 1] + 1..probes[k]).collect();
+        let combos: Vec<_> = between.iter().map(|&i| ladder[i]).collect();
+        let found = round(&path, filter, &combos).await?;
+        if let Some((j, out)) = found
+            .into_iter()
+            .enumerate()
+            .find_map(|(j, o)| o.map(|o| (j, o)))
+        {
+            pick = (between[j], out);
+        }
+    }
+    let (fps, mut q) = ladder[pick.0];
+    let mut best = pick.1;
+    // Refino: com o fps decidido, sobe o q até o teto de 500 KB (a escada tem degraus largos).
+    // Se o degrau de cima é do mesmo fps, o limite é o q dele (já sabemos que não coube).
+    if pick.0 > 0 {
+        let hi = match ladder[pick.0 - 1] {
+            (f, hq) if f == fps => hq,
+            _ => (q + 30).min(100),
+        };
+        let gap = hi.saturating_sub(q);
+        if gap >= 4 {
+            let cands: Vec<(u8, u8)> = [gap / 4, gap / 2, gap * 3 / 4]
+                .iter()
+                .map(|d| (fps, q + d))
+                .collect();
+            let tries = round(&path, filter, &cands).await?;
+            if let Some((c, out)) = cands
+                .iter()
+                .zip(tries)
+                .rev()
+                .find_map(|(c, o)| o.map(|o| (*c, o)))
+            {
+                q = c.1;
+                best = out;
             }
         }
     }
     drop(mem);
-    Err(ConvErr::TooBig)
+    Ok((best, fps, q))
+}
+
+/// Primeira trilha de áudio -> Ogg/Opus mono, até `secs` s. Sem áudio -> `Ok(None)`.
+pub async fn extract_audio(bytes: &[u8], secs: u32) -> Result<Option<Vec<u8>>, ConvErr> {
+    let _g = SEM.acquire().await.map_err(|_| ConvErr::NoFfmpeg)?;
+    let mem = super::memfd::MemFile::new(bytes).map_err(|_| ConvErr::Unsupported)?;
+    // Sem faixa de áudio o ffmpeg falha ("does not contain any stream"); a mídia já foi lida com
+    // sucesso pelo `to_animated`, então falha aqui = sem áudio, não erro (sem ler stderr).
+    let probe = ["-i", &mem.path(), "-map", "0:a:0", "-vn", "-t", "0.1"]
+        .map(String::from)
+        .to_vec();
+    match run(probe, None, 10, "null").await {
+        Ok(_) => {}
+        Err(Run::NoFfmpeg) => return Err(ConvErr::NoFfmpeg),
+        Err(Run::Timeout) => return Err(ConvErr::TooBig),
+        Err(Run::Fail) => return Ok(None),
+    }
+    let args = [
+        "-i",
+        &mem.path(),
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-t",
+        &secs.to_string(),
+        "-c:a",
+        "libopus",
+        "-b:a",
+        "32k",
+        "-ac",
+        "1",
+    ]
+    .map(String::from)
+    .to_vec();
+    match run(args, None, 15, "ogg").await {
+        Err(Run::NoFfmpeg) => Err(ConvErr::NoFfmpeg),
+        Err(Run::Fail) => Err(ConvErr::Unsupported),
+        Err(Run::Timeout) => Err(ConvErr::TooBig),
+        Ok(out) => Ok((!out.is_empty()).then_some(out)),
+    }
+}
+
+/// Diagnóstico: (pico, RMS, duração em s) do áudio extraído, em escala 0..32767. None se não decodificar.
+/// Só para a aba Debug dizer se o som está mudo na origem.
+pub async fn audio_level(ogg: &[u8]) -> Option<(u16, u32, u32)> {
+    let args = ["-i", "pipe:0", "-ac", "1", "-ar", "8000"]
+        .map(String::from)
+        .to_vec();
+    let pcm = run(args, Some(ogg), 10, "s16le").await.ok()?;
+    let s: Vec<i16> = pcm
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|b| i16::from_le_bytes(*b))
+        .collect();
+    if s.is_empty() {
+        return None;
+    }
+    let peak = s.iter().map(|v| v.unsigned_abs()).max()?;
+    let rms = (s.iter().map(|&v| f64::from(v).powi(2)).sum::<f64>() / s.len() as f64).sqrt();
+    Some((peak, rms as u32, (s.len() / 8000) as u32))
 }
 
 #[cfg(test)]
@@ -194,6 +358,24 @@ mod tests {
         o.stdout
     }
 
+    #[test]
+    fn escada_so_mexe_em_fps_e_q() {
+        // 512x512 e 10 s são fixos; cada fps desce o q antes de o fps cair.
+        assert!(FILTER.starts_with("scale=512:512") && !FILTER.contains("pad"));
+        for w in ANIM_LADDER.windows(2) {
+            assert!(w[1].0 < w[0].0 || (w[1].0 == w[0].0 && w[1].1 < w[0].1));
+        }
+    }
+
+    #[test]
+    fn sondas_cobrem_a_escada() {
+        // 3 sondas (topo, meio, fim) deixam no máximo 3 degraus por rodada de refino.
+        for n in [ANIM_LADDER.len(), MALVIN_LADDER.len()] {
+            let p = [0, (n - 1) / 2, n - 1];
+            assert!(p.windows(2).all(|w| w[1] - w[0] - 1 <= 3));
+        }
+    }
+
     #[tokio::test]
     #[ignore = "precisa de ffmpeg"]
     async fn png_vira_webp_estatico() {
@@ -205,11 +387,22 @@ mod tests {
         assert!(matches!(&out[12..16], b"VP8 " | b"VP8X" | b"VP8L"));
     }
 
+    /// Vídeo real do dono: `VIDEO_TESTE=/caminho.mp4 cargo test -j1 video_real -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore = "precisa de ffmpeg e VIDEO_TESTE"]
+    async fn video_real_cabe_inteiro() {
+        let b = std::fs::read(std::env::var("VIDEO_TESTE").unwrap()).unwrap();
+        let malvin = std::env::var("MODO_MALVIN").is_ok();
+        let (out, fps, q) = to_animated(&b, malvin).await.unwrap();
+        eprintln!("fps={fps} q={q} bytes={}", out.len());
+        assert!(out.len() <= ANIM_MAX);
+    }
+
     #[tokio::test]
     #[ignore = "precisa de ffmpeg e memfd"]
     async fn video_vira_webp_animado() {
         let mkv = ffmpeg_gen(&["-c:v", "mpeg4", "-f", "matroska"]).await;
-        let out = to_animated(&mkv).await.unwrap();
+        let (out, _, _) = to_animated(&mkv, false).await.unwrap();
         assert!(out.len() <= ANIM_MAX);
         assert!(out.windows(4).any(|w| w == b"ANIM"));
     }
@@ -219,7 +412,7 @@ mod tests {
     #[ignore = "precisa de ffmpeg"]
     async fn animado_com_exif() {
         let mkv = ffmpeg_gen(&["-c:v", "mpeg4", "-f", "matroska"]).await;
-        let out = to_animated(&mkv).await.unwrap();
+        let (out, _, _) = to_animated(&mkv, false).await.unwrap();
         let w = crate::stickers::exif::with_exif(&out, "Silicon™", "@al4sk4s").unwrap();
         assert!(whatsapp_rust::webp::is_animated(&w));
         assert!(w.windows(4).any(|x| x == b"EXIF"));
