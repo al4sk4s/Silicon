@@ -25,7 +25,9 @@ pub struct Fetched {
 pub fn build_args(url: &str, out_dir: &Path, cookies: Option<&Path>) -> Vec<String> {
     let mut a: Vec<String> = [
         "-f",
-        "bv*+ba/b",
+        // áudio AAC preferido: o merge em mp4 vira só cópia (sem recodificar); opus em mp4 distorce
+        "bv*+ba[acodec^=mp4a]/b[acodec^=mp4a]/bv*+ba/b",
+        "--no-cache-dir",
         "--merge-output-format",
         "mp4",
         "--no-playlist",
