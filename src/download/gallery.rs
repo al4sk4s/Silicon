@@ -66,7 +66,13 @@ pub fn classify(stderr: &str) -> DlError {
     let has = |ks: &[&str]| ks.iter().any(|k| s.contains(k));
     if has(&["larger than", "filesize"]) {
         DlError::TooBig
-    } else if has(&["login", "registered users", "authenticat"]) {
+    } else if has(&[
+        "login",
+        "registered users",
+        "authenticat",
+        "401",
+        "unauthorized",
+    ]) {
         DlError::LoginRequired
     } else if has(&["429", "too many requests"]) {
         DlError::Other
@@ -181,7 +187,15 @@ async fn run(
         Ok(Ok(o)) => o,
     };
     if !out.status.success() {
-        return Err(classify(&String::from_utf8_lossy(&out.stderr)));
+        let err = String::from_utf8_lossy(&out.stderr);
+        // Só a classe do erro no journal (corta antes da URL).
+        let linha = err
+            .lines()
+            .rev()
+            .find(|l| l.contains("error"))
+            .unwrap_or("");
+        tracing::warn!(erro = %linha.split(" for '").next().unwrap_or(""), "gallery-dl falhou");
+        return Err(classify(&err));
     }
     collect(tmp)
 }
@@ -287,6 +301,10 @@ mod tests {
         assert_eq!(classify("Unsupported URL 'https://x'"), NotFound);
         assert_eq!(classify("HTTP 429 Too Many Requests"), Other);
         assert_eq!(classify("file larger than filesize-max"), TooBig);
+        assert_eq!(
+            classify("HttpError: '401 Unauthorized' for 'x'"),
+            LoginRequired
+        );
         assert_eq!(classify("kaboom"), Other);
     }
 }
