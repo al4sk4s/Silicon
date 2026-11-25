@@ -286,14 +286,16 @@ pub async fn audio_level(ogg: &[u8]) -> Option<(u16, u32)> {
         .to_vec();
     let pcm = run(args, Some(ogg), 10, "s16le").await.ok()?;
     let s: Vec<i16> = pcm
-        .chunks_exact(2)
-        .map(|b| i16::from_le_bytes([b[0], b[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|b| i16::from_le_bytes(*b))
         .collect();
     if s.is_empty() {
         return None;
     }
     let peak = s.iter().map(|v| v.unsigned_abs()).max()?;
-    let rms = (s.iter().map(|&v| (v as f64).powi(2)).sum::<f64>() / s.len() as f64).sqrt();
+    let rms = (s.iter().map(|&v| f64::from(v).powi(2)).sum::<f64>() / s.len() as f64).sqrt();
     Some((peak, rms as u32))
 }
 

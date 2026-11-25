@@ -340,9 +340,13 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
         let cap = ANIM_SECS.min(st.store.sticker_sound_max_s().unwrap_or(10));
         match convert::extract_audio(&bytes, cap).await {
             Ok(Some(ogg)) => {
+                let nivel = match convert::audio_level(&ogg).await {
+                    Some((pico, rms)) => format!("pico {pico}, rms {rms} de 32767"),
+                    None => "nível não medido".into(),
+                };
                 st.dbg(
                     "figurinha_som",
-                    &format!("áudio extraído {} bytes, {cap} s", ogg.len()),
+                    &format!("áudio extraído {} bytes, {cap} s, {nivel}", ogg.len()),
                 );
                 sound = Sound::New(ogg, cap);
             }
