@@ -580,28 +580,16 @@ async fn send_items(
         &format!("{imgs} fotos, {vids} vídeos, {} soltos", loose.len()),
     );
     let quote = || MessageField::some(ctx.build_quote_context());
-    let mut parent_key = None;
-    if album.len() >= 2 {
-        match ctx.send_message(album_parent(imgs, vids, quote())).await {
-            Ok(r) => {
-                sent.add(r.message_id.as_str());
-                parent_key = Some(album_key(chat, r.message_id.as_str()));
-            }
-            Err(e) => {
-                st.dbg("baixar_erro_envio", &e.to_string());
-                return;
-            }
-        }
-    }
-    let mut ok = 0;
+    let grouped = album.len() >= 2;
+    // 1) Sobe tudo antes de enviar: assim o álbum chega de uma vez, como quando se anexa várias fotos.
+    let mut msgs = Vec::new();
     for (n, it) in album.iter().enumerate() {
-        crate::wa::pause(st).await;
         let dir = tmp.join(format!("i{n}"));
         if std::fs::create_dir_all(&dir).is_err() {
             continue;
         }
         // Filho do álbum não cita; item único cita o comando.
-        let q = if parent_key.is_some() {
+        let q = if grouped {
             MessageField::none()
         } else {
             quote()
@@ -617,7 +605,25 @@ async fn send_items(
                 build_video(ctx, st, chat, &g, &dir, q).await
             }
         };
-        let Some(m) = m else { continue };
+        msgs.extend(m);
+    }
+    // 2) Uma pausa (P8) e o álbum sai em sequência curta: pai, depois os filhos.
+    crate::wa::pause(st).await;
+    let mut ok = 0;
+    let mut parent_key = None;
+    if grouped && !msgs.is_empty() {
+        match ctx.send_message(album_parent(imgs, vids, quote())).await {
+            Ok(r) => {
+                sent.add(r.message_id.as_str());
+                parent_key = Some(album_key(chat, r.message_id.as_str()));
+            }
+            Err(e) => {
+                st.dbg("baixar_erro_envio", &e.to_string());
+                return;
+            }
+        }
+    }
+    for m in msgs {
         let m = match &parent_key {
             Some(k) => whatsapp_rust::proto_helpers::wrap_as_album_child(m, k.clone()),
             None => m,
@@ -628,6 +634,9 @@ async fn send_items(
                 ok += 1;
             }
             Err(e) => st.dbg("baixar_erro_envio", &e.to_string()),
+        }
+        if parent_key.is_some() {
+            tokio::time::sleep(Duration::from_millis(150)).await;
         }
     }
     for (n, it) in loose.iter().enumerate() {
