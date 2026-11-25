@@ -9,14 +9,34 @@ pub(crate) async fn login_get(State(st): S) -> Html<String> {
 
 /// Primeiro acesso (sem senha gravada): o dono escolhe a senha aqui.
 pub(crate) fn setup_page(msg: &str) -> String {
-    format!(
-        "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
-         <title>Silicon - primeira senha</title><style>{CSS}</style></head><body><main><h1>Silicon</h1>\
-         <p>Primeiro acesso: escolha a senha do painel.</p><p>{}</p>\
-         <form class=\"card\" method=\"post\" action=\"/login\">\
-         <input type=\"password\" name=\"password\" placeholder=\"Senha\" autofocus> \
-         <input type=\"password\" name=\"password2\" placeholder=\"Repita\"> <button>Definir</button></form></main></body></html>",
-        esc(msg)
+    bare_page(
+        "primeira senha",
+        &format!(
+            "<p class=\"muted\">Primeiro acesso: escolha a senha do painel.</p>{}\
+             <form method=\"post\" action=\"/login\" class=\"stack\">{}{}{}</form>",
+            flash(msg),
+            field(
+                "Senha",
+                "password",
+                &input(
+                    "password",
+                    "",
+                    "type=\"password\" autofocus autocomplete=\"new-password\" required"
+                ),
+                ""
+            ),
+            field(
+                "Repita a senha",
+                "password2",
+                &input(
+                    "password2",
+                    "",
+                    "type=\"password\" autocomplete=\"new-password\" required"
+                ),
+                ""
+            ),
+            btn("Definir senha", "primary", "")
+        ),
     )
 }
 

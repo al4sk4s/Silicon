@@ -17,3 +17,5 @@ pub(crate) use downloader::*;
 pub(crate) use pair::*;
 pub(crate) use rules::*;
 pub(crate) use settings::*;
+mod appearance;
+pub(super) use appearance::*;

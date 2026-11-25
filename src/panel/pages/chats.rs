@@ -13,65 +13,96 @@ pub(crate) fn chats_page(st: &AppState, msg: &str) -> String {
     for j in roles.keys() {
         chats.entry(j.clone()).or_default();
     }
-    let mut body = format!(
-        "<p>{}</p><input id=\"q\" placeholder=\"Buscar grupo ou contato…\" style=\"width:100%;box-sizing:border-box\">\
-         <script>q.oninput=()=>document.querySelectorAll('.chat').forEach(c=>c.hidden=!c.dataset.q.includes(q.value.toLowerCase()));\
-         setInterval(()=>{{if(!q.value&&!document.activeElement.matches('input,select'))location.replace('/chats')}},5000)</script>",
-        esc(msg)
-    );
+    let mut list = String::new();
     for (jid, label) in &chats {
-        body += &chat_form(jid, label, roles.get(jid).copied());
+        list += &chat_form(jid, label, roles.get(jid).copied());
     }
-    body += "<h2>Adicionar por JID</h2>";
-    body += &chat_form("", "", None);
-    page("Chats", &body)
+    if list.is_empty() {
+        list = empty(
+            "chat",
+            "Nenhum chat conhecido ainda. Adicione por JID abaixo.",
+        );
+    }
+    let add = card(
+        "Adicionar por JID",
+        &format!(
+            "<form class=\"row\" method=\"post\" action=\"/chats\">{}<input type=\"hidden\" name=\"role\" value=\"comando\">{}{}</form>",
+            input(
+                "jid",
+                "",
+                "placeholder=\"123@g.us\" aria-label=\"JID\" required"
+            ),
+            input(
+                "name",
+                "",
+                "placeholder=\"nome (opcional)\" aria-label=\"Nome\""
+            ),
+            btn("Liberar", "primary", "")
+        ),
+    );
+    let body = format!(
+        "{}{}{}<div class=\"list\" id=\"chat-list\">{list}</div>{add}",
+        flash(msg),
+        page_header("Chats", "Quem pode usar o bot e com qual papel.", ""),
+        search("#chat-list", "Buscar grupo ou contato…"),
+    );
+    page(st, "Chats", &body)
+}
+
+/// Troca de papel: envia sozinho ao mudar (JS); sem JS aparece o botão "Ok".
+fn role_select(cur: Option<Role>) -> String {
+    let mut o = format!(
+        "<option value=\"\" disabled{}>outro papel…</option>",
+        if cur.is_none() { " selected" } else { "" }
+    );
+    for v in ["comando", "monitorado", "alerta"] {
+        o += &format!(
+            "<option value=\"{v}\"{}>{v}</option>",
+            if cur.is_some_and(|r| r.as_str() == v) {
+                " selected"
+            } else {
+                ""
+            }
+        );
+    }
+    format!(
+        "<select class=\"select\" name=\"role\" data-autosubmit aria-label=\"Mudar papel\">{o}</select>"
+    )
 }
 
 pub(crate) fn chat_form(jid: &str, label: &str, cur: Option<Role>) -> String {
-    if jid.is_empty() {
-        // JID manual
-        return "<form class=\"card row\" method=\"post\" action=\"/chats\">\
-                <input name=\"jid\" placeholder=\"123@g.us\" required> \
-                <input type=\"hidden\" name=\"role\" value=\"comando\">\
-                <input name=\"name\" placeholder=\"nome (opcional)\"> <button>Liberar</button></form>"
-            .to_string();
-    }
     let on = cur == Some(Role::Comando);
-    let mut opts = String::new();
-    for (v, txt) in [
-        ("comando", "comando"),
-        ("monitorado", "monitorado"),
-        ("alerta", "alerta"),
-    ] {
-        let sel = cur.is_some_and(|r| r.as_str() == v);
-        opts += &format!(
-            "<option value=\"{v}\"{}>{txt}</option>",
-            if sel { " selected" } else { "" }
-        );
-    }
-    let (next, btn, cls) = if on {
-        ("none", "Bloquear", " class=\"off\"")
+    let hidden = format!(
+        "<input type=\"hidden\" name=\"jid\" value=\"{j}\"><input type=\"hidden\" name=\"name\" value=\"{l}\">",
+        j = esc(jid),
+        l = esc(label)
+    );
+    let (next, txt, kind) = if on {
+        ("none", "Bloquear", "")
     } else {
-        ("comando", "Liberar", "")
+        ("comando", "Liberar", "btn-primary")
+    };
+    let is_group = jid.ends_with("@g.us");
+    let (tone, role_txt) = match cur {
+        Some(r) => ("info", r.as_str()),
+        None => ("muted", "sem papel"),
     };
     format!(
-        "<div class=\"card row chat\" data-q=\"{q}\"><div><b>{name}</b><br><code>{j}</code></div><div class=\"row\">\
-         <span class=\"tag{tc}\">{role}</span>\
-         <form method=\"post\" action=\"/chats\"><input type=\"hidden\" name=\"jid\" value=\"{j}\">\
-         <input type=\"hidden\" name=\"name\" value=\"{l}\"><input type=\"hidden\" name=\"role\" value=\"{next}\"><button{cls}>{btn}</button></form>\
-         <form method=\"post\" action=\"/chats\"><input type=\"hidden\" name=\"jid\" value=\"{j}\"><input type=\"hidden\" name=\"name\" value=\"{l}\">\
-         <select name=\"role\" onchange=\"this.form.submit()\"><option value=\"\" disabled{nosel}>outro papel…</option>{opts}</select></form></div></div>",
+        "<div class=\"list-row chat\" data-q=\"{q}\">{av}<div class=\"grow\"><b>{name}</b><div class=\"meta mono\">{j}</div></div>\
+         {kind_badge}{role_badge}\
+         <div class=\"actions\"><form class=\"inline\" method=\"post\" action=\"/chats\">{hidden}<input type=\"hidden\" name=\"role\" value=\"{next}\"><button class=\"btn btn-sm {kind}\">{txt}</button></form>\
+         <form class=\"inline\" method=\"post\" action=\"/chats\">{hidden}{sel}<noscript><button class=\"btn btn-sm\">Ok</button></noscript></form></div></div>",
         q = esc(&format!("{label} {jid}").to_lowercase()),
+        av = avatar(if label.is_empty() { jid } else { label }),
         name = if label.is_empty() {
             "(sem nome)".into()
         } else {
             esc(label)
         },
         j = esc(jid),
-        l = esc(label),
-        tc = if on { " on" } else { "" },
-        role = cur.map_or("sem papel", |r| r.as_str()),
-        nosel = if cur.is_none() { " selected" } else { "" },
+        kind_badge = badge(if is_group { "grupo" } else { "contato" }, "muted"),
+        role_badge = badge(role_txt, if on { "ok" } else { tone }),
+        sel = role_select(cur),
     )
 }
 

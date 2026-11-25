@@ -614,3 +614,257 @@ fn esc_and_bind() {
     assert_eq!(effective_bind("lixo", false), "127.0.0.1:8787");
     assert!(is_loopback("127.0.0.1:80") && !is_loopback("0.0.0.0:80"));
 }
+
+// ---- spec 010: redesign ----
+
+async fn get_body(
+    app: &Router,
+    uri: &str,
+    cookie: Option<&str>,
+) -> (StatusCode, HeaderMap, String) {
+    let mut b = Request::get(uri).header("host", "localhost");
+    if let Some(c) = cookie {
+        b = b.header("cookie", format!("silicon_session={c}"));
+    }
+    let r = app
+        .clone()
+        .oneshot(b.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let (s, h) = (r.status(), r.headers().clone());
+    (s, h, body_of(r).await)
+}
+
+#[tokio::test]
+async fn assets_publicos_sem_sessao_e_versionados() {
+    let (app, _) = app();
+    let url = assets::url("app.js");
+    let (s, h, body) = get_body(&app, &url, None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(
+        h[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/javascript")
+    );
+    assert_eq!(h[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+    assert!(
+        h[header::CACHE_CONTROL]
+            .to_str()
+            .unwrap()
+            .contains("immutable")
+    );
+    // só código estático: nada de segredo/dado do bot
+    assert!(!body.contains("silicon_session=") && !body.contains("password_hash"));
+    // versão errada ou nome fora da lista → 404
+    assert_eq!(
+        get_body(&app, "/assets/zzz/app.js", None).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let (v, _) = url.trim_start_matches("/assets/").split_once('/').unwrap();
+    assert_eq!(
+        get_body(&app, &format!("/assets/{v}/../../etc/passwd"), None)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get_body(&app, &format!("/assets/{v}/secret.txt"), None)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn paginas_tem_csp_e_nenhum_inline() {
+    let (app, st) = app();
+    let tok = st.sessions.create();
+    for uri in [
+        "/",
+        "/chats",
+        "/contacts",
+        "/rules",
+        "/alerts",
+        "/debug",
+        "/pair",
+        "/downloader",
+        "/settings",
+        "/settings/geral",
+        "/settings/mensagens",
+        "/settings/figurinhas",
+        "/settings/monitor",
+        "/appearance",
+        "/w/conexao",
+        "/w/sistema",
+        "/w/chats",
+    ] {
+        let (s, h, body) = get_body(&app, uri, Some(&tok)).await;
+        assert_eq!(s, StatusCode::OK, "{uri}");
+        assert!(
+            h[header::CONTENT_SECURITY_POLICY]
+                .to_str()
+                .unwrap()
+                .contains("script-src 'self'"),
+            "{uri}"
+        );
+        assert!(
+            !body.contains(" style=")
+                && !body.contains(" onclick=")
+                && !body.contains(" onchange="),
+            "{uri}"
+        );
+        assert!(!body.contains("<script>"), "{uri}");
+        assert!(
+            !body.contains("password_hash") && !body.contains("$argon2"),
+            "{uri}"
+        );
+    }
+    // login e primeira senha também usam a CSP e os assets
+    let (s, h, body) = get_body(&app, "/login", None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(h.contains_key(header::CONTENT_SECURITY_POLICY));
+    assert!(body.contains("/assets/"));
+    assert_eq!(
+        get_body(&app, "/w/nao-existe", Some(&tok)).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get_body(&app, "/settings/xyz", Some(&tok)).await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn rotas_novas_exigem_login() {
+    let (app, _) = app();
+    for uri in ["/appearance", "/w/conexao", "/settings/geral"] {
+        let (s, _, _) = get_body(&app, uri, None).await;
+        assert_eq!(s, StatusCode::SEE_OTHER, "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn todo_post_recusa_origem_errada() {
+    let (app, st) = app();
+    let tok = st.sessions.create();
+    for uri in [
+        "/chats",
+        "/contacts",
+        "/rules",
+        "/pair",
+        "/settings",
+        "/settings/geral",
+        "/settings/figurinhas",
+        "/downloader/limit",
+        "/downloader/tiktok/test",
+        "/downloader/tiktok/remove",
+        "/logout",
+    ] {
+        let r = app
+            .clone()
+            .oneshot(post(uri, "x=1", Some("http://evil.example"), Some(&tok)))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::FORBIDDEN, "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn ajustes_por_categoria_nao_mexem_nas_outras() {
+    let (app, st) = app();
+    let tok = st.sessions.create();
+    st.store
+        .set("owner_jid", "5511999990000@s.whatsapp.net")
+        .unwrap();
+    st.store.set("delay_min_ms", "1500").unwrap();
+    st.store.set("delay_max_ms", "2500").unwrap();
+    let r = app
+        .clone()
+        .oneshot(post(
+            "/settings/figurinhas",
+            "sticker_per_min=5&sticker_pack_name=Pack&sticker_publisher=Eu&sticker_sound=1&sticker_sound_max_s=4&video_sticker_mode=silicon",
+            None,
+            Some(&tok),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(st.store.sticker_per_min().unwrap(), 5);
+    assert_eq!(st.store.sticker_pack_name().unwrap(), "Pack");
+    // dono e atrasos continuam como estavam
+    assert_eq!(
+        st.store.owner_jid().unwrap().as_deref(),
+        Some("5511999990000@s.whatsapp.net")
+    );
+    assert_eq!(
+        (
+            st.store.delay_min_ms().unwrap(),
+            st.store.delay_max_ms().unwrap()
+        ),
+        (1500, 2500)
+    );
+    // validação igual à do formulário completo: valor inválido = 400 sem gravar
+    let r = app
+        .clone()
+        .oneshot(post(
+            "/settings/figurinhas",
+            "sticker_per_min=99",
+            None,
+            Some(&tok),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(st.store.sticker_per_min().unwrap(), 5);
+    // mensagens: mínimo > máximo recusado; monitor não altera figurinhas
+    let r = app
+        .clone()
+        .oneshot(post(
+            "/settings/mensagens",
+            "delay_min_ms=9000&delay_max_ms=100",
+            None,
+            Some(&tok),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+    let r = app
+        .clone()
+        .oneshot(post(
+            "/settings/monitor",
+            "dedupe_min=10&alertas_hora=20&retencao_dias=3&silencio_ini=&silencio_fim=",
+            None,
+            Some(&tok),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(st.store.dedupe_min().unwrap(), 10);
+    assert_eq!(st.store.sticker_per_min().unwrap(), 5);
+    assert!(st.store.sticker_sound().unwrap());
+}
+
+#[tokio::test]
+async fn nomes_de_chat_e_contato_sao_escapados() {
+    let (app, st) = app();
+    let tok = st.sessions.create();
+    st.store
+        .set_role("1@g.us", Role::Comando, Some("<script>alert(1)</script>"))
+        .unwrap();
+    st.reload_roles().unwrap();
+    st.groups
+        .lock()
+        .unwrap()
+        .push(("1@g.us".into(), "<script>alert(1)</script>".into()));
+    let (_, _, body) = get_body(&app, "/chats", Some(&tok)).await;
+    assert!(!body.contains("<script>alert(1)"));
+    assert!(body.contains("&lt;script&gt;"));
+}
+
+#[test]
+fn qr_svg_sem_estilo_inline() {
+    // a CSP bloqueia `style=`; o QR precisa pintar por atributo
+    let svg = pages::qr_svg("2@abc,def,ghi").unwrap();
+    assert!(svg.contains("<svg") && !svg.contains("style="), "{svg}");
+}

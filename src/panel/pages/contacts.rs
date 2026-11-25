@@ -8,24 +8,59 @@ pub(crate) fn normalize_phone(s: &str) -> Option<String> {
 }
 
 pub(crate) fn contacts_page(st: &AppState, msg: &str) -> String {
-    let mut body = format!(
-        "<p>{}</p><form method=\"post\" action=\"/contacts\"><input type=\"hidden\" name=\"action\" value=\"add\">\
-         número: <input name=\"phone\" placeholder=\"11 99999-8888\" required> \
-         nome (opcional): <input name=\"name\"> <button>Adicionar</button></form>",
-        esc(msg)
-    );
+    let mut list = String::new();
     for (jid, name) in st.store.dm_commands().unwrap_or_default() {
         let label = name.unwrap_or_else(|| jid.split('@').next().unwrap_or("").to_string());
-        body.push_str(&format!(
-            "<div class=\"card row\"><span>{} <small>{}</small></span>\
-             <form method=\"post\" action=\"/contacts\"><input type=\"hidden\" name=\"action\" value=\"del\">\
-             <input type=\"hidden\" name=\"jid\" value=\"{j}\"><button class=\"off\">Remover</button></form></div>",
-            esc(&label),
-            esc(&jid),
+        list += &format!(
+            "<div class=\"list-row\" data-q=\"{q}\">{av}<div class=\"grow\"><b>{l}</b><div class=\"meta mono\">{j}</div></div>\
+             <div class=\"actions\">{del}</div></div>",
+            q = esc(&format!("{label} {jid}").to_lowercase()),
+            av = avatar(&label),
+            l = esc(&label),
             j = esc(&jid),
-        ));
+            del = confirm_form(
+                "/contacts",
+                &[("action", "del"), ("jid", &jid)],
+                "Remover",
+                &format!("Remover {label}? Ele deixa de usar os comandos."),
+                "btn-sm btn-danger"
+            ),
+        );
     }
-    page("Contatos", &body)
+    if list.is_empty() {
+        list = empty("users", "Nenhum contato liberado ainda.");
+    }
+    let add = card(
+        "Adicionar contato",
+        &format!(
+            "<form class=\"row\" method=\"post\" action=\"/contacts\"><input type=\"hidden\" name=\"action\" value=\"add\">{}{}{}</form>",
+            input(
+                "phone",
+                "",
+                "placeholder=\"11 99999-8888\" aria-label=\"Número\" inputmode=\"tel\" required"
+            ),
+            input(
+                "name",
+                "",
+                "placeholder=\"nome (opcional)\" aria-label=\"Nome\""
+            ),
+            btn("Adicionar", "primary", "")
+        ),
+    );
+    page(
+        st,
+        "Contatos",
+        &format!(
+            "{}{}{}<div class=\"list\" id=\"contact-list\">{list}</div>{add}",
+            flash(msg),
+            page_header(
+                "Contatos",
+                "Pessoas que podem usar os comandos em conversa direta.",
+                ""
+            ),
+            search("#contact-list", "Buscar contato…"),
+        ),
+    )
 }
 
 pub(crate) async fn contacts_get(State(st): S) -> Html<String> {

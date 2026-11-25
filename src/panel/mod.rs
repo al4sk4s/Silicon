@@ -61,6 +61,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/chats", get(chats_get).post(chats_post))
         .route("/contacts", get(contacts_get).post(contacts_post))
         .route("/settings", get(settings_get).post(settings_post))
+        .route(
+            "/settings/{cat}",
+            get(settings_cat_get).post(settings_cat_post),
+        )
+        .route("/appearance", get(appearance_get))
+        .route("/w/{name}", get(widget_get))
         .route("/pair", get(pair_get).post(pair_post))
         .route("/pair/state", get(pair_state))
         .route("/metrics", get(metrics_get))
@@ -77,9 +83,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/downloader/{plat}/remove", post(dl_remove))
         .layer(middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
+        // estáticos públicos (o login precisa deles): ficam fora do guard e não tocam no AppState
+        .merge(Router::new().route("/assets/{v}/{name}", get(assets::asset)))
 }
 
+mod assets;
 mod auth;
+mod components;
 mod guard;
 mod layout;
 mod pages;
@@ -87,6 +97,7 @@ mod pages;
 mod tests;
 
 use auth::*;
+use components::*;
 use guard::*;
 use layout::*;
 use pages::*;

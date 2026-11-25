@@ -1,69 +1,338 @@
 use crate::panel::*;
 
-pub(crate) fn settings_page(st: &AppState, msg: &str) -> String {
-    let min = st.store.delay_min_ms().unwrap_or(1000);
-    let max = st.store.delay_max_ms().unwrap_or(2000);
-    let owner = st.store.owner_jid().ok().flatten().unwrap_or_default();
-    let per_min = st.store.sticker_per_min().unwrap_or(3);
-    let pack = st.store.sticker_pack_name().unwrap_or_default();
-    let publisher = st.store.sticker_publisher().unwrap_or_default();
-    let sound_on = if st.store.sticker_sound().unwrap_or(true) {
-        " checked"
-    } else {
-        ""
+/// Categorias de Ajustes: (id na URL, título, campos do formulário).
+const CATS: [(&str, &str, &[&str]); 4] = [
+    ("geral", "Geral", &["owner_jid"]),
+    ("mensagens", "Mensagens", &["delay_min_ms", "delay_max_ms"]),
+    (
+        "figurinhas",
+        "Figurinhas",
+        &[
+            "sticker_per_min",
+            "sticker_pack_name",
+            "sticker_publisher",
+            "sticker_sound",
+            "sticker_sound_max_s",
+            "video_sticker_mode",
+        ],
+    ),
+    (
+        "monitor",
+        "Monitoramento",
+        &[
+            "dedupe_min",
+            "alertas_hora",
+            "retencao_dias",
+            "silencio_ini",
+            "silencio_fim",
+        ],
+    ),
+];
+
+fn cat_of(id: &str) -> Option<&'static (&'static str, &'static str, &'static [&'static str])> {
+    CATS.iter().find(|c| c.0 == id)
+}
+
+/// Valores gravados hoje, no formato do formulário completo (base do POST por categoria).
+fn current_fields(st: &AppState) -> HashMap<String, String> {
+    let s = &st.store;
+    let mut m = HashMap::new();
+    let mut put = |k: &str, v: String| {
+        m.insert(k.to_string(), v);
     };
-    let sound_max = st.store.sticker_sound_max_s().unwrap_or(10);
-    let dedupe = st.store.dedupe_min().unwrap_or(30);
-    let por_hora = st.store.alertas_hora().unwrap_or(10);
-    let retencao = st.store.retencao_dias().unwrap_or(7);
-    let sil_ini = st.store.silencio_ini().unwrap_or_default();
-    let sil_fim = st.store.silencio_fim().unwrap_or_default();
-    let malvin = st.store.video_sticker_mode().is_ok_and(|m| m == "malvin");
-    let (sw, sd) = if malvin {
-        (" selected", "")
-    } else {
-        ("", " selected")
+    put("delay_min_ms", s.delay_min_ms().unwrap_or(1000).to_string());
+    put("delay_max_ms", s.delay_max_ms().unwrap_or(2000).to_string());
+    put(
+        "owner_jid",
+        s.owner_jid().ok().flatten().unwrap_or_default(),
+    );
+    put(
+        "sticker_per_min",
+        s.sticker_per_min().unwrap_or(3).to_string(),
+    );
+    put(
+        "sticker_pack_name",
+        s.sticker_pack_name().unwrap_or_default(),
+    );
+    put(
+        "sticker_publisher",
+        s.sticker_publisher().unwrap_or_default(),
+    );
+    if s.sticker_sound().unwrap_or(true) {
+        put("sticker_sound", "1".into());
+    }
+    put(
+        "sticker_sound_max_s",
+        s.sticker_sound_max_s().unwrap_or(10).to_string(),
+    );
+    put(
+        "video_sticker_mode",
+        s.video_sticker_mode().unwrap_or_default(),
+    );
+    put("dedupe_min", s.dedupe_min().unwrap_or(30).to_string());
+    put("alertas_hora", s.alertas_hora().unwrap_or(10).to_string());
+    put("retencao_dias", s.retencao_dias().unwrap_or(7).to_string());
+    put("silencio_ini", s.silencio_ini().unwrap_or_default());
+    put("silencio_fim", s.silencio_fim().unwrap_or_default());
+    m
+}
+
+fn tabs(cur: &str) -> String {
+    let mut t = String::from("<nav class=\"tabs\" aria-label=\"Categorias de ajustes\">");
+    for (id, name, _) in CATS {
+        t += &format!(
+            "<a class=\"tab{}\" href=\"/settings/{id}\"{}>{name}</a>",
+            if id == cur { " active" } else { "" },
+            if id == cur {
+                " aria-current=\"page\""
+            } else {
+                ""
+            },
+        );
+    }
+    t + "</nav>"
+}
+
+pub(crate) fn settings_page(st: &AppState, cat: &str, msg: &str) -> String {
+    let Some((id, name, _)) = cat_of(cat) else {
+        return settings_page(st, "geral", msg);
+    };
+    let s = &st.store;
+    let (desc, fields) = match *id {
+        "geral" => (
+            "Quem administra o bot.",
+            field(
+                "JID do dono (opcional)",
+                "owner_jid",
+                &input(
+                    "owner_jid",
+                    &s.owner_jid().ok().flatten().unwrap_or_default(),
+                    "placeholder=\"5511999998888@s.whatsapp.net\"",
+                ),
+                "Só o dono pode usar comandos de administração.",
+            ),
+        ),
+        "mensagens" => (
+            "Atraso antes de responder, para parecer humano.",
+            format!(
+                "<div class=\"form-grid\">{}{}</div>",
+                field(
+                    "Atraso mínimo (ms)",
+                    "delay_min_ms",
+                    &number_input(
+                        "delay_min_ms",
+                        &s.delay_min_ms().unwrap_or(1000).to_string(),
+                        "0",
+                        "600000"
+                    ),
+                    ""
+                ),
+                field(
+                    "Atraso máximo (ms)",
+                    "delay_max_ms",
+                    &number_input(
+                        "delay_max_ms",
+                        &s.delay_max_ms().unwrap_or(2000).to_string(),
+                        "0",
+                        "600000"
+                    ),
+                    ""
+                ),
+            ),
+        ),
+        "figurinhas" => {
+            let mode = s.video_sticker_mode().unwrap_or_default();
+            (
+                "Limites e aparência das figurinhas.",
+                format!(
+                    "<div class=\"form-grid\">{}{}{}{}</div>{}{}",
+                    field(
+                        "Figurinhas por minuto (1–30)",
+                        "sticker_per_min",
+                        &number_input(
+                            "sticker_per_min",
+                            &s.sticker_per_min().unwrap_or(3).to_string(),
+                            "1",
+                            "30"
+                        ),
+                        ""
+                    ),
+                    field(
+                        "Segundos máximos de som (1–10)",
+                        "sticker_sound_max_s",
+                        &number_input(
+                            "sticker_sound_max_s",
+                            &s.sticker_sound_max_s().unwrap_or(10).to_string(),
+                            "1",
+                            "10"
+                        ),
+                        ""
+                    ),
+                    field(
+                        "Nome do pacote (até 64)",
+                        "sticker_pack_name",
+                        &input(
+                            "sticker_pack_name",
+                            &s.sticker_pack_name().unwrap_or_default(),
+                            "maxlength=\"64\""
+                        ),
+                        ""
+                    ),
+                    field(
+                        "Autor (até 64)",
+                        "sticker_publisher",
+                        &input(
+                            "sticker_publisher",
+                            &s.sticker_publisher().unwrap_or_default(),
+                            "maxlength=\"64\""
+                        ),
+                        ""
+                    ),
+                    switch(
+                        "sticker_sound",
+                        "Figurinha com som (vídeo com áudio)",
+                        s.sticker_sound().unwrap_or(true)
+                    ),
+                    field(
+                        "Qualidade do vídeo",
+                        "video_sticker_mode",
+                        &select(
+                            "video_sticker_mode",
+                            &[
+                                (
+                                    "silicon",
+                                    "silicon: 512 nítido, até 15–20 fps, mais pesado de converter"
+                                ),
+                                ("malvin", "malvin: mais leve"),
+                            ],
+                            &mode,
+                            "",
+                        ),
+                        "",
+                    ),
+                ),
+            )
+        }
+        _ => (
+            "Quando e quanto o bot avisa você.",
+            format!(
+                "<div class=\"form-grid\">{}{}{}</div><div class=\"form-grid\">{}{}</div>",
+                field(
+                    "Repetido ignorado por (min, 1–1440)",
+                    "dedupe_min",
+                    &number_input(
+                        "dedupe_min",
+                        &s.dedupe_min().unwrap_or(30).to_string(),
+                        "1",
+                        "1440"
+                    ),
+                    ""
+                ),
+                field(
+                    "Alertas por hora (1–1000)",
+                    "alertas_hora",
+                    &number_input(
+                        "alertas_hora",
+                        &s.alertas_hora().unwrap_or(10).to_string(),
+                        "1",
+                        "1000"
+                    ),
+                    ""
+                ),
+                field(
+                    "Guardar histórico por (dias, 1–365)",
+                    "retencao_dias",
+                    &number_input(
+                        "retencao_dias",
+                        &s.retencao_dias().unwrap_or(7).to_string(),
+                        "1",
+                        "365"
+                    ),
+                    ""
+                ),
+                field(
+                    "Silêncio de",
+                    "silencio_ini",
+                    &input(
+                        "silencio_ini",
+                        &s.silencio_ini().unwrap_or_default(),
+                        "type=\"time\""
+                    ),
+                    "Vazio nos dois = desligado."
+                ),
+                field(
+                    "Silêncio até",
+                    "silencio_fim",
+                    &input(
+                        "silencio_fim",
+                        &s.silencio_fim().unwrap_or_default(),
+                        "type=\"time\""
+                    ),
+                    ""
+                ),
+            ),
+        ),
     };
     page(
+        st,
         "Ajustes",
         &format!(
-            "<p>{}</p><form method=\"post\" action=\"/settings\">\
-             atraso mín (ms): <input name=\"delay_min_ms\" value=\"{min}\"><br>\
-             atraso máx (ms): <input name=\"delay_max_ms\" value=\"{max}\"><br>\
-             JID do dono (opcional): <input name=\"owner_jid\" value=\"{}\"><br>\
-             figurinhas por minuto (1-30): <input type=\"number\" min=\"1\" max=\"30\" name=\"sticker_per_min\" value=\"{per_min}\"><br>\
-             nome da figurinha (até 64): <input name=\"sticker_pack_name\" value=\"{}\"><br>\
-             autor da figurinha (até 64): <input name=\"sticker_publisher\" value=\"{}\"><br>\
-             figurinha com som (vídeo com áudio): <input type=\"checkbox\" name=\"sticker_sound\" value=\"1\"{sound_on}><br>\
-             segundos máximos de som (1-10): <input type=\"number\" min=\"1\" max=\"10\" name=\"sticker_sound_max_s\" value=\"{sound_max}\"><br>\
-             qualidade do vídeo: <select name=\"video_sticker_mode\"><option value=\"silicon\"{sd}>silicon (512 nítido, até 15–20 fps, mais pesado de converter)</option><option value=\"malvin\"{sw}>malvin (320 esticado, 15 fps, mais leve e mais borrado)</option></select><br>\
-             <h2>Monitor</h2>\
-             repetido ignorado por (min, 1-1440): <input type=\"number\" min=\"1\" max=\"1440\" name=\"dedupe_min\" value=\"{dedupe}\"><br>\
-             alertas por hora (1-1000): <input type=\"number\" min=\"1\" max=\"1000\" name=\"alertas_hora\" value=\"{por_hora}\"><br>\
-             guardar histórico por (dias, 1-365): <input type=\"number\" min=\"1\" max=\"365\" name=\"retencao_dias\" value=\"{retencao}\"><br>\
-             silêncio de (HH:MM, vazio = desligado): <input name=\"silencio_ini\" value=\"{}\" placeholder=\"23:00\" size=\"6\"> \
-             até <input name=\"silencio_fim\" value=\"{}\" placeholder=\"07:00\" size=\"6\"><br>\
-             <button>Salvar</button></form>",
-            esc(msg),
-            esc(&owner),
-            esc(&pack),
-            esc(&publisher),
-            esc(&sil_ini),
-            esc(&sil_fim)
+            "{}{}{}<form class=\"stack settings-form\" method=\"post\" action=\"/settings/{id}\" data-dirty>{fields}\
+             <div class=\"row\">{}</div></form>",
+            flash(msg),
+            page_header(name, desc, ""),
+            tabs(id),
+            btn("Salvar", "primary", "data-save"),
         ),
     )
 }
 
 pub(crate) async fn settings_get(State(st): S) -> Html<String> {
-    Html(settings_page(&st, ""))
+    Html(settings_page(&st, "geral", ""))
 }
 
+pub(crate) async fn settings_cat_get(State(st): S, Path(cat): Path<String>) -> Response {
+    match cat_of(&cat) {
+        Some(_) => Html(settings_page(&st, &cat, "")).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// POST por categoria: só os campos dela vêm do formulário; o resto fica como está gravado.
+/// A validação e a gravação são as mesmas do formulário completo (`apply_settings`).
+pub(crate) async fn settings_cat_post(
+    State(st): S,
+    Path(cat): Path<String>,
+    Form(f): Fields,
+) -> Response {
+    let Some((_, _, keys)) = cat_of(&cat) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let mut full = current_fields(&st);
+    for k in *keys {
+        full.remove(*k);
+        if let Some(v) = f.get(*k) {
+            full.insert((*k).to_string(), v.clone());
+        }
+    }
+    apply_settings(&st, &full, &cat)
+}
+
+/// Formulário completo (legado, sem JS): mesmo comportamento de antes.
 pub(crate) async fn settings_post(State(st): S, Form(f): Fields) -> Response {
+    apply_settings(&st, &f, "geral")
+}
+
+fn apply_settings(st: &AppState, f: &HashMap<String, String>, cat: &str) -> Response {
     let num = |k: &str| f.get(k).and_then(|v| v.trim().parse::<u64>().ok());
     let (Some(min), Some(max)) = (num("delay_min_ms"), num("delay_max_ms")) else {
         return (
             StatusCode::BAD_REQUEST,
-            Html(settings_page(&st, "Atrasos devem ser números inteiros.")),
+            Html(settings_page(
+                st,
+                cat,
+                "Atrasos devem ser números inteiros.",
+            )),
         )
             .into_response();
     };
@@ -71,7 +340,8 @@ pub(crate) async fn settings_post(State(st): S, Form(f): Fields) -> Response {
         return (
             StatusCode::BAD_REQUEST,
             Html(settings_page(
-                &st,
+                st,
+                cat,
                 "O mínimo não pode ser maior que o máximo.",
             )),
         )
@@ -85,7 +355,8 @@ pub(crate) async fn settings_post(State(st): S, Form(f): Fields) -> Response {
         return (
             StatusCode::BAD_REQUEST,
             Html(settings_page(
-                &st,
+                st,
+                cat,
                 "Figurinhas por minuto deve ser um inteiro de 1 a 30.",
             )),
         )
@@ -105,7 +376,8 @@ pub(crate) async fn settings_post(State(st): S, Form(f): Fields) -> Response {
                 return (
                     StatusCode::BAD_REQUEST,
                     Html(settings_page(
-                        &st,
+                        st,
+                        cat,
                         "Segundos de som deve ser um inteiro de 1 a 10.",
                     )),
                 )
@@ -123,14 +395,15 @@ pub(crate) async fn settings_post(State(st): S, Form(f): Fields) -> Response {
         return (
             StatusCode::BAD_REQUEST,
             Html(settings_page(
-                &st,
+                st,
+                cat,
                 "Nome e autor aceitam até 64 caracteres.",
             )),
         )
             .into_response();
     }
     // monitor: campo ausente mantém o valor atual; tudo é validado antes de gravar qualquer coisa
-    let bad = |m: &str| (StatusCode::BAD_REQUEST, Html(settings_page(&st, m))).into_response();
+    let bad = |m: &str| (StatusCode::BAD_REQUEST, Html(settings_page(st, cat, m))).into_response();
     let mut mon = [0u64; 3];
     for (i, (k, atual, max)) in [
         ("dedupe_min", st.store.dedupe_min().unwrap_or(30), 1440),
@@ -174,10 +447,10 @@ pub(crate) async fn settings_post(State(st): S, Form(f): Fields) -> Response {
         .and_then(|_| st.store.set("delay_max_ms", &max.to_string()))
         .and_then(|_| st.store.set("owner_jid", owner));
     match res {
-        Ok(()) => Html(settings_page(&st, "Salvo.")).into_response(),
+        Ok(()) => Html(settings_page(st, cat, "Salvo.")).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Html(settings_page(&st, &format!("Erro ao salvar: {e}"))),
+            Html(settings_page(st, cat, &format!("Erro ao salvar: {e}"))),
         )
             .into_response(),
     }

@@ -10,9 +10,15 @@ pub(crate) async fn debug_get(State(st): S) -> Html<String> {
     }
     for d in q.iter().rev() {
         let bad = d.cat.contains("erro") || d.cat.contains("recusa");
+        // erro/recusa: classe + rótulo, nunca só cor
+        let tag = if bad {
+            badge("erro/recusa", "bad")
+        } else {
+            String::new()
+        };
         rows += &format!(
-            "<tr{}><td>{}</td><td>{}</td><td>{}</td></tr>",
-            if bad { " style=\"color:#c33\"" } else { "" },
+            "<tr{}><td data-label=\"Hora\" class=\"mono\">{}</td><td data-label=\"Categoria\" class=\"mono\">{}{tag}</td><td data-label=\"Detalhe\" class=\"mono\">{}</td></tr>",
+            if bad { " class=\"bad-text\"" } else { "" },
             crate::state::local_hms(d.at),
             esc(&d.cat),
             esc(&d.msg)
@@ -20,13 +26,31 @@ pub(crate) async fn debug_get(State(st): S) -> Html<String> {
     }
     let resumo: String = cats
         .iter()
-        .map(|(c, n)| format!("<code>{}</code> × {n} &nbsp; ", esc(c)))
+        .map(|(c, n)| {
+            format!(
+                "<span class=\"badge muted\"><span class=\"mono\">{}</span> × {n}</span> ",
+                esc(c)
+            )
+        })
         .collect();
+    let content = if rows.is_empty() {
+        empty("bug", "Sem registros de debug.")
+    } else {
+        format!(
+            "<div class=\"row\">{resumo}</div>\
+             <table class=\"table\"><thead><tr><th>Hora</th><th>Categoria</th><th>Detalhe</th></tr></thead><tbody>{rows}</tbody></table>"
+        )
+    };
     Html(page(
+        &st,
         "Debug",
         &format!(
-            "<div class=\"card\">{resumo}</div>\
-             <table><tr><th>Hora</th><th>Categoria</th><th>Detalhe</th></tr>{rows}</table>"
+            "{}{content}",
+            page_header(
+                "Debug",
+                "Últimas 300 linhas, da mais nova para a mais antiga.",
+                ""
+            )
         ),
     ))
 }

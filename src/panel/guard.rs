@@ -44,6 +44,10 @@ pub(crate) async fn guard(State(st): S, req: Request, next: Next) -> Response {
     let h = resp.headers_mut();
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     h.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    h.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(assets::CSP),
+    );
     resp
 }
 

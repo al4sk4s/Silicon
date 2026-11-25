@@ -9,7 +9,7 @@ pub(crate) fn qr_svg(code: &str) -> Option<String> {
     )
 }
 
-/// Fragmento do estado do pareamento (trocado a cada 2 s pelo JS da página).
+/// Fragmento do estado do pareamento (atualizado por polling na página).
 pub(crate) fn pair_fragment(st: &AppState) -> String {
     let (connected, number) = {
         let s = st.status.lock().unwrap_or_else(|e| e.into_inner());
@@ -17,7 +17,8 @@ pub(crate) fn pair_fragment(st: &AppState) -> String {
     };
     if connected {
         return format!(
-            "<div class=\"card\">Conectado como <b>{}</b>.</div>",
+            "<div class=\"card row\">{}<span>Conectado como <b>{}</b>.</span></div>",
+            status_dot("ok", "Conectado"),
             esc(number.as_deref().unwrap_or("?"))
         );
     }
@@ -25,7 +26,7 @@ pub(crate) fn pair_fragment(st: &AppState) -> String {
     let mut o = String::new();
     if let Some(code) = &p.code {
         o += &format!(
-            "<div class=\"card\">Código de pareamento (WhatsApp &gt; Aparelhos conectados &gt; Conectar com número):<div class=\"code\">{}</div></div>",
+            "<div class=\"card\"><p class=\"muted\">Código de pareamento (WhatsApp &gt; Aparelhos conectados &gt; Conectar com número):</p><div class=\"code-big mono\">{}</div></div>",
             esc(code)
         );
     }
@@ -33,14 +34,20 @@ pub(crate) fn pair_fragment(st: &AppState) -> String {
         Some(svg) => {
             let left = (p.at + p.ttl).saturating_sub(crate::state::now());
             o += &format!(
-                "<div class=\"card\">Escaneie no WhatsApp (Aparelhos conectados). Este QR vale ~{left}s e troca sozinho.<br>{svg}</div>"
+                "<div class=\"card\"><p class=\"muted\">Escaneie no WhatsApp (Aparelhos conectados). Este QR vale ~{left}s e troca sozinho.</p><div class=\"qr\">{svg}</div></div>"
             );
         }
         None if p.exhausted => {
-            o += "<div class=\"card\">O QR expirou. Use <b>Tentar de novo</b>.</div>"
+            o += &format!(
+                "<div class=\"card row\">{}<span>O QR expirou. Use <b>Tentar de novo</b>.</span></div>",
+                badge("expirou", "warn")
+            )
         }
         None if p.code.is_none() => {
-            o += "<div class=\"card\">Aguardando o WhatsApp gerar o QR…</div>"
+            o += &format!(
+                "<div class=\"card row\">{}<span>Aguardando o WhatsApp gerar o QR…</span></div>",
+                badge("aguardando", "info")
+            )
         }
         None => {}
     }
@@ -53,19 +60,42 @@ pub(crate) async fn pair_state(State(st): S) -> Html<String> {
 
 pub(crate) fn pair_page(st: &AppState, msg: &str) -> String {
     let phone = st.lock_pairing().phone.clone().unwrap_or_default();
+    let connected = st
+        .status
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .connected;
+    // conectado: só o estado; os controles de pareamento saem da tela
+    let form = if connected {
+        String::new()
+    } else {
+        card(
+            "Parear",
+            &format!(
+                "<form class=\"stack\" method=\"post\" action=\"/pair\">{}\
+                 <div class=\"row\"><button class=\"btn btn-primary\" name=\"action\" value=\"save\">Salvar e reiniciar pareamento</button>\
+                 <button class=\"btn\" name=\"action\" value=\"retry\">Tentar de novo</button></div></form>",
+                field(
+                    "Número (opcional, para parear por código)",
+                    "phone",
+                    &input(
+                        "phone",
+                        &phone,
+                        "placeholder=\"5511999998888\" inputmode=\"numeric\""
+                    ),
+                    "Só dígitos: DDI 55 + DDD + número, sem +, espaço ou traço. Vazio = QR."
+                )
+            ),
+        )
+    };
     page(
+        st,
         "Pareamento",
         &format!(
-            "<p>{}</p><div id=\"s\">{}</div>\
-             <form class=\"card\" method=\"post\" action=\"/pair\">\
-             Número (opcional, para parear por código): <input name=\"phone\" value=\"{}\" placeholder=\"5511999998888\" inputmode=\"numeric\"><br>\
-             <small>Só dígitos: DDI 55 + DDD + número, sem +, espaço ou traço. Ex.: <code>5511999998888</code>. Vazio = QR.</small><br><br>\
-             <button name=\"action\" value=\"save\">Salvar e reiniciar pareamento</button> \
-             <button class=\"off\" name=\"action\" value=\"retry\">Tentar de novo</button></form>\
-             <script>setInterval(async()=>{{try{{const r=await fetch('/pair/state');if(r.redirected){{location.reload();return}}s.innerHTML=await r.text()}}catch(e){{}}}},2000)</script>",
-            esc(msg),
+            "{}{}<div id=\"s\" data-poll=\"/pair/state\" data-interval=\"5000\">{}</div>{form}",
+            flash(msg),
+            page_header("Pareamento", "Conecte o bot ao WhatsApp.", ""),
             pair_fragment(st),
-            esc(&phone)
         ),
     )
 }

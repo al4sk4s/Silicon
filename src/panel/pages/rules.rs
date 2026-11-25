@@ -1,49 +1,135 @@
 use crate::panel::*;
 
-pub(crate) fn rules_page(st: &AppState, msg: &str) -> String {
-    let mut body = format!(
-        "<p>{}</p><p><small>Os padrões (regex) casam contra o texto já em minúsculas e sem acento: escreva o padrão assim. \
-         \"Ignorar\" vence as regras.</small></p>",
+/// Resultado do teste de texto, com selo visual (casou / nenhuma).
+fn test_result(msg: &str) -> Option<String> {
+    let (tone, label) = if msg.starts_with("Casou a regra") {
+        ("ok", "Casou")
+    } else if msg.starts_with("Nenhuma regra") {
+        ("info", "Sem correspondência")
+    } else {
+        return None;
+    };
+    Some(format!(
+        "<div class=\"card row\">{}<span>{}</span></div>",
+        badge(label, tone),
         esc(msg)
-    );
+    ))
+}
+
+pub(crate) fn rules_page(st: &AppState, msg: &str) -> String {
+    let result = test_result(msg);
+    let flash_html = if result.is_some() {
+        String::new()
+    } else {
+        flash(msg)
+    };
+    let mut list = String::new();
     for (id, nome, padrao, ativa) in st.store.rules().unwrap_or_default() {
-        let (next, btn, cls) = if ativa {
-            ("0", "Desativar", " class=\"off\"")
+        let (act, txt) = if ativa {
+            ("off", "Desativar")
         } else {
-            ("1", "Ativar", "")
+            ("on", "Ativar")
         };
-        body += &format!(
-            "<div class=\"card\"><form class=\"row\" method=\"post\" action=\"/rules\">\
+        list += &format!(
+            "<div class=\"card\" data-q=\"{q}\"><form class=\"row\" method=\"post\" action=\"/rules\">\
              <input type=\"hidden\" name=\"action\" value=\"edit\"><input type=\"hidden\" name=\"id\" value=\"{id}\">\
-             <input name=\"nome\" value=\"{n}\" required> <input name=\"padrao\" value=\"{p}\" required> \
-             <span class=\"tag{tc}\">{st_}</span> <button>Salvar</button></form>\
-             <form class=\"row\" method=\"post\" action=\"/rules\"><input type=\"hidden\" name=\"id\" value=\"{id}\">\
-             <button{cls} name=\"action\" value=\"{act}\">{btn}</button> <button class=\"off\" name=\"action\" value=\"del\">Apagar</button></form></div>",
+             <input class=\"input\" name=\"nome\" value=\"{n}\" aria-label=\"Nome\" required>\
+             <input class=\"input mono grow\" name=\"padrao\" value=\"{p}\" aria-label=\"Padrão (regex)\" required>\
+             {badge} <button class=\"btn btn-sm\">Salvar</button></form>\
+             <div class=\"row\"><form class=\"inline\" method=\"post\" action=\"/rules\"><input type=\"hidden\" name=\"id\" value=\"{id}\">\
+             <button class=\"btn btn-sm btn-ghost\" name=\"action\" value=\"{act}\">{txt}</button></form>{del}</div></div>",
+            q = esc(&format!("{nome} {padrao}").to_lowercase()),
             n = esc(&nome),
             p = esc(&padrao),
-            tc = if ativa { " on" } else { "" },
-            st_ = if ativa { "ativa" } else { "inativa" },
-            act = if next == "1" { "on" } else { "off" },
+            badge = badge(
+                if ativa { "ativa" } else { "inativa" },
+                if ativa { "ok" } else { "muted" }
+            ),
+            del = confirm_form(
+                "/rules",
+                &[("action", "del"), ("id", &id.to_string())],
+                "Apagar",
+                &format!("Apagar a regra {nome}?"),
+                "btn-sm btn-danger"
+            ),
         );
     }
-    body += "<h2>Nova regra</h2><form class=\"card row\" method=\"post\" action=\"/rules\">\
-             <input type=\"hidden\" name=\"action\" value=\"add\"><input name=\"nome\" placeholder=\"nome\" required> \
-             <input name=\"padrao\" placeholder=\"padrão (regex)\" required> <button>Adicionar</button></form>\
-             <h2>Ignorar</h2>";
+    if list.is_empty() {
+        list = empty("rules", "Nenhuma regra cadastrada.");
+    }
+    let mut ign = String::new();
     for (id, padrao) in st.store.ignores().unwrap_or_default() {
-        body += &format!(
-            "<div class=\"card row\"><code>{}</code><form method=\"post\" action=\"/rules\">\
-             <input type=\"hidden\" name=\"action\" value=\"ign_del\"><input type=\"hidden\" name=\"id\" value=\"{id}\">\
-             <button class=\"off\">Apagar</button></form></div>",
-            esc(&padrao)
+        ign += &format!(
+            "<div class=\"list-row\"><code class=\"mono grow\">{}</code>{}</div>",
+            esc(&padrao),
+            confirm_form(
+                "/rules",
+                &[("action", "ign_del"), ("id", &id.to_string())],
+                "Apagar",
+                "Apagar este padrão ignorado?",
+                "btn-sm btn-danger"
+            ),
         );
     }
-    body += "<form class=\"card row\" method=\"post\" action=\"/rules\"><input type=\"hidden\" name=\"action\" value=\"ign_add\">\
-             <input name=\"padrao\" placeholder=\"padrão a ignorar (regex)\" required> <button>Adicionar</button></form>\
-             <h2>Testar texto</h2><form class=\"card row\" method=\"post\" action=\"/rules\">\
-             <input type=\"hidden\" name=\"action\" value=\"test\"><input name=\"texto\" placeholder=\"texto de exemplo\" style=\"flex:1\" required> \
-             <button>Testar</button></form>";
-    page("Regras", &body)
+    if ign.is_empty() {
+        ign = "<p class=\"muted\">Nenhum padrão ignorado.</p>".into();
+    }
+    let new_rule = card(
+        "Nova regra",
+        &format!(
+            "<form class=\"row\" method=\"post\" action=\"/rules\"><input type=\"hidden\" name=\"action\" value=\"add\">{}{}{}</form>",
+            input(
+                "nome",
+                "",
+                "placeholder=\"nome\" aria-label=\"Nome\" required"
+            ),
+            input(
+                "padrao",
+                "",
+                "placeholder=\"padrão (regex)\" aria-label=\"Padrão\" required"
+            ),
+            btn("Adicionar", "primary", "")
+        ),
+    );
+    let ignore = card(
+        "Ignorar",
+        &format!(
+            "<p class=\"muted\">Texto que casa com um destes padrões nunca gera alerta.</p>{ign}\
+             <form class=\"row\" method=\"post\" action=\"/rules\"><input type=\"hidden\" name=\"action\" value=\"ign_add\">{}{}</form>",
+            input(
+                "padrao",
+                "",
+                "placeholder=\"padrão a ignorar (regex)\" aria-label=\"Padrão a ignorar\" required"
+            ),
+            btn("Adicionar", "", "")
+        ),
+    );
+    let test = card(
+        "Testar texto",
+        &format!(
+            "<form class=\"row\" method=\"post\" action=\"/rules\"><input type=\"hidden\" name=\"action\" value=\"test\">{}{}</form>{}",
+            input(
+                "texto",
+                "",
+                "placeholder=\"texto de exemplo\" aria-label=\"Texto de exemplo\" required"
+            ),
+            btn("Testar", "", ""),
+            result.unwrap_or_default()
+        ),
+    );
+    page(
+        st,
+        "Regras",
+        &format!(
+            "{flash_html}{}{}<div class=\"stack\" id=\"rule-list\">{list}</div>{new_rule}{ignore}{test}",
+            page_header(
+                "Regras",
+                "Os padrões (regex) casam contra o texto já em minúsculas e sem acento. \"Ignorar\" vence as regras.",
+                ""
+            ),
+            search("#rule-list", "Buscar regra…"),
+        ),
+    )
 }
 
 pub(crate) async fn rules_get(State(st): S) -> Html<String> {

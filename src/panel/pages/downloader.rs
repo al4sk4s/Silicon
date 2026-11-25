@@ -39,26 +39,56 @@ pub(crate) fn dl_status(st: &AppState, dir: &std::path::Path, plat: Platform) ->
 pub(crate) fn dl_page(st: &AppState, dir: &std::path::Path, msg: &str) -> String {
     let per_min = st.store.dl_per_min().unwrap_or(2);
     let mut body = format!(
-        "<p>{}</p><p>Use uma conta secundária: a conta dos cookies pode ser banida.</p>",
-        esc(msg)
+        "{}{}<p class=\"muted\">Use uma conta secundária: a conta dos cookies pode ser banida.</p><div class=\"grid\">",
+        flash(msg),
+        page_header("Downloader", "Cookies por plataforma e limite de uso.", "")
+            + &section_header("Plataformas")
     );
     for (plat, label, _) in PLATS {
         let n = plat.name();
-        body += &format!(
-            "<h2>{label}</h2><p>Cookies: {}</p>\
-             <form method=\"post\" action=\"/downloader/{n}/save\" enctype=\"multipart/form-data\">\
-             <input type=\"file\" name=\"file\" accept=\".json\" required> <button>Salvar</button></form>\
-             <form method=\"post\" action=\"/downloader/{n}/test\" style=\"display:inline\"><button>Testar</button></form> \
-             <form method=\"post\" action=\"/downloader/{n}/remove\" style=\"display:inline\"><button>Remover</button></form>",
-            esc(&dl_status(st, dir, plat))
+        let status = dl_status(st, dir, plat);
+        let tone = if status.starts_with("válido") {
+            "ok"
+        } else if status.starts_with("falhou") {
+            "bad"
+        } else {
+            "muted"
+        };
+        body += &card(
+            label,
+            &format!(
+                "<p>Cookies: {}</p>\
+                 <form class=\"stack\" method=\"post\" action=\"/downloader/{n}/save\" enctype=\"multipart/form-data\">\
+                 <input class=\"input\" type=\"file\" name=\"file\" accept=\".json\" aria-label=\"Arquivo de cookies de {label}\" required>{}</form>\
+                 <div class=\"row\"><form class=\"inline\" method=\"post\" action=\"/downloader/{n}/test\">{}</form>{}</div>",
+                badge(&status, tone),
+                btn("Salvar cookies", "primary", ""),
+                btn("Testar", "", ""),
+                confirm_form(
+                    &format!("/downloader/{n}/remove"),
+                    &[],
+                    "Remover",
+                    &format!("Remover os cookies de {label}?"),
+                    "btn-danger"
+                ),
+            ),
         );
     }
-    body += &format!(
-        "<h2>Limite</h2><form method=\"post\" action=\"/downloader/limit\">\
-         downloads por minuto (1-10): <input type=\"number\" min=\"1\" max=\"10\" name=\"dl_per_min\" value=\"{per_min}\"> \
-         <button>Salvar</button></form>"
+    body += "</div>";
+    body += &card(
+        "Limite",
+        &format!(
+            "<form class=\"row\" method=\"post\" action=\"/downloader/limit\">{}{}</form>",
+            field(
+                "Downloads por minuto (1–10)",
+                "dl_per_min",
+                &number_input("dl_per_min", &per_min.to_string(), "1", "10"),
+                ""
+            ),
+            btn("Salvar", "primary", "")
+        ),
     );
-    page("Downloader", &body)
+    page(st, "Downloader", &body)
 }
 
 pub(crate) fn dl_reply(st: &AppState, code: StatusCode, msg: &str) -> Response {
