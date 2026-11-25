@@ -155,7 +155,7 @@ async fn attempt(
         "-t".into(),
         "10".into(),
         "-vf".into(),
-        format!("fps={fps},mpdecimate,{filter}"),
+        format!("fps={fps},{filter}"),
         "-c:v".into(),
         "libwebp".into(),
         "-lossless".into(),
