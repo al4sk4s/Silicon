@@ -278,9 +278,9 @@ pub async fn extract_audio(bytes: &[u8], secs: u32) -> Result<Option<Vec<u8>>, C
     }
 }
 
-/// Diagnóstico: (pico, RMS) do áudio extraído, em escala 0..32767. None se não decodificar.
+/// Diagnóstico: (pico, RMS, duração em s) do áudio extraído, em escala 0..32767. None se não decodificar.
 /// Só para a aba Debug dizer se o som está mudo na origem.
-pub async fn audio_level(ogg: &[u8]) -> Option<(u16, u32)> {
+pub async fn audio_level(ogg: &[u8]) -> Option<(u16, u32, u32)> {
     let args = ["-i", "pipe:0", "-ac", "1", "-ar", "8000"]
         .map(String::from)
         .to_vec();
@@ -296,7 +296,7 @@ pub async fn audio_level(ogg: &[u8]) -> Option<(u16, u32)> {
     }
     let peak = s.iter().map(|v| v.unsigned_abs()).max()?;
     let rms = (s.iter().map(|&v| f64::from(v).powi(2)).sum::<f64>() / s.len() as f64).sqrt();
-    Some((peak, rms as u32))
+    Some((peak, rms as u32, (s.len() / 8000) as u32))
 }
 
 #[cfg(test)]

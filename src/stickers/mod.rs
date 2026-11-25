@@ -341,12 +341,19 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
         match convert::extract_audio(&bytes, cap).await {
             Ok(Some(ogg)) => {
                 let nivel = match convert::audio_level(&ogg).await {
-                    Some((pico, rms)) => format!("pico {pico}, rms {rms} de 32767"),
+                    Some((pico, rms, dur)) => {
+                        format!("pico {pico}, rms {rms} de 32767, áudio de {dur} s")
+                    }
                     None => "nível não medido".into(),
                 };
                 st.dbg(
                     "figurinha_som",
-                    &format!("áudio extraído {} bytes, {cap} s, {nivel}", ogg.len()),
+                    &format!(
+                        "áudio extraído {} bytes (teto {cap} s), {nivel}; webp {} KB, origem {} KB",
+                        ogg.len(),
+                        webp.len() / 1024,
+                        bytes.len() / 1024
+                    ),
                 );
                 sound = Sound::New(ogg, cap);
             }
