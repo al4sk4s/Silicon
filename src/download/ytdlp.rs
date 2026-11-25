@@ -25,8 +25,8 @@ pub struct Fetched {
 pub fn build_args(url: &str, out_dir: &Path, cookies: Option<&Path>) -> Vec<String> {
     let mut a: Vec<String> = [
         "-f",
-        // áudio AAC preferido: o merge em mp4 vira só cópia (sem recodificar); opus em mp4 distorce
-        "bv*+ba[acodec^=mp4a]/b[acodec^=mp4a]/bv*+ba/b",
+        // H.264+AAC preferidos (o único que o WhatsApp/celular toca sempre); sem eles, handle.rs recodifica
+        "bv*[vcodec^=avc1]+ba[acodec^=mp4a]/b[vcodec^=avc1]/bv*+ba[acodec^=mp4a]/b[acodec^=mp4a]/bv*+ba/b",
         "--no-cache-dir",
         "--merge-output-format",
         "mp4",

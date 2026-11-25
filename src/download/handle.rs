@@ -31,6 +31,115 @@ async fn say(ctx: &MessageContext, sent: &crate::wa::Sent, t: &str) {
     }
 }
 
+/// Codecs do arquivo (ffprobe, `chave=valor` por fluxo).
+async fn probe_codecs(path: &Path) -> Option<String> {
+    let p = path.to_string_lossy();
+    let out = run(
+        "ffprobe",
+        &[
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_name,codec_type,pix_fmt",
+            "-of",
+            "default=noprint_wrappers=1",
+            &p,
+        ],
+    )
+    .await?;
+    Some(String::from_utf8_lossy(&out).into_owned())
+}
+
+/// true se o vídeo não for H.264 yuv420p ou o áudio não for AAC (não toca em todo aparelho).
+pub fn needs_transcode(probe: &str) -> bool {
+    let (mut name, mut kind, mut pix) = (String::new(), String::new(), String::new());
+    let mut bad = false;
+    let mut check = |name: &str, kind: &str, pix: &str| {
+        if (kind == "video" && (name != "h264" || pix != "yuv420p"))
+            || (kind == "audio" && name != "aac")
+        {
+            bad = true;
+        }
+    };
+    for l in probe.lines() {
+        if let Some(v) = l.strip_prefix("codec_name=") {
+            check(&name, &kind, &pix);
+            (name, kind, pix) = (v.trim().into(), String::new(), String::new());
+        } else if let Some(v) = l.strip_prefix("codec_type=") {
+            kind = v.trim().into();
+        } else if let Some(v) = l.strip_prefix("pix_fmt=") {
+            pix = v.trim().into();
+        }
+    }
+    check(&name, &kind, &pix);
+    bad
+}
+
+/// Recodifica para H.264/AAC + faststart quando o arquivo não toca em todo lugar.
+/// Falha mantém o original (melhor tocar mal que não mandar).
+async fn ensure_compatible(st: &crate::state::AppState, got: &mut ytdlp::Fetched, tmp: &Path) {
+    let Some(probe) = probe_codecs(&got.path).await else {
+        st.dbg("baixar_erro_probe", "ffprobe falhou");
+        return;
+    };
+    let resumo = probe
+        .lines()
+        .filter(|l| !l.starts_with("codec_type"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !needs_transcode(&probe) {
+        st.dbg("baixar_codec", &format!("ok {resumo}"));
+        return;
+    }
+    st.dbg("baixar_codec", &format!("recodificando: {resumo}"));
+    let out = tmp.join("t.mp4");
+    let (i, o) = (got.path.to_string_lossy(), out.to_string_lossy());
+    let cmd = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            &i,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "23",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
+            &o,
+        ])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .status();
+    let ok = matches!(tokio::time::timeout(Duration::from_secs(120), cmd).await, Ok(Ok(s)) if s.success());
+    match tokio::fs::metadata(&out).await {
+        Ok(m) if ok && m.len() > 0 => {
+            st.dbg(
+                "baixar_codec",
+                &format!("recodificado {} -> {} bytes", got.size, m.len()),
+            );
+            *got = ytdlp::Fetched {
+                path: out,
+                size: m.len(),
+            };
+        }
+        _ => st.dbg(
+            "baixar_erro_recodificar",
+            "ffmpeg falhou; enviando original",
+        ),
+    }
+}
+
 /// Largura, altura e duração (s) via ffprobe; falha vira None (o envio segue sem).
 async fn probe_video(path: &Path) -> Option<(u32, u32, u32)> {
     let p = path.to_string_lossy();
@@ -168,7 +277,7 @@ pub async fn handle(
         Err(e) => st.dbg("baixar_erro_reacao", &e.to_string()),
     }
     let timeout = Duration::from_secs(st.store.dl_timeout_s().unwrap_or(120));
-    let got = match ytdlp::fetch(&link, plat, &cookies_dir(), tmp.path(), timeout).await {
+    let mut got = match ytdlp::fetch(&link, plat, &cookies_dir(), tmp.path(), timeout).await {
         Ok(g) => g,
         Err(e) => {
             st.dbg("baixar_erro_ytdlp", &format!("{e:?} plataforma {plat:?}"));
@@ -177,6 +286,7 @@ pub async fn handle(
         }
     };
     st.dbg("baixar_ytdlp_ok", &format!("{} bytes", got.size));
+    ensure_compatible(st, &mut got, tmp.path()).await;
     if got.size > MAX_TOTAL {
         return fail(DlError::TooBig).await;
     }
@@ -282,6 +392,18 @@ async fn send(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detecta_codec_incompativel() {
+        let ok = "codec_name=h264\ncodec_type=video\npix_fmt=yuv420p\ncodec_name=aac\ncodec_type=audio\n";
+        assert!(!needs_transcode(ok));
+        assert!(needs_transcode(&ok.replace("h264", "av1")));
+        assert!(needs_transcode(&ok.replace("yuv420p", "yuv444p")));
+        assert!(needs_transcode(&ok.replace("aac", "opus")));
+        assert!(!needs_transcode(
+            "codec_name=h264\ncodec_type=video\npix_fmt=yuv420p\n"
+        ));
+    }
 
     #[test]
     fn parse_cmd_cases() {
