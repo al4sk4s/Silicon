@@ -1,6 +1,6 @@
 # Spec 010 — Redesign do painel web (rewrite de UI/UX)
 
-Status: **rascunho — aguarda aprovação do dono** · Depende de: 001, 005, 007, 003, 004 (downloader) · Só muda apresentação; **nenhuma regra do bot muda**.
+Status: **decisões aprovadas pelo dono em 2026-11-25; plano a seguir** · Depende de: 001, 005, 007, 003, 004 (downloader) · Só muda apresentação; **nenhuma regra do bot muda**.
 
 ## Por quê
 O painel (`src/panel.rs`, ~1,7 mil linhas) renderiza HTML com um CSS de uma linha embutido, nav de
@@ -114,13 +114,15 @@ Sem conflito: o redesign é só apresentação sobre a mesma lógica. Pontos de 
 ## Entrega em etapas (para o plano/tarefas)
 Auditoria → fundação (tokens, componentes, layout, assets) → dashboard → migração página a página (cada uma funcional ao fim) → aparência/preferências → polimento/acessibilidade → testes e checagem visual. Cada etapa deixa o painel funcionando; commits por etapa.
 
+## Decisões do dono (25/11/2026)
+1. Preferências visuais e layout: **só `localStorage`** (por navegador).
+2. **Sem** paleta Ctrl+K (a busca global sai do escopo; RF6 fica sem ela).
+3. **CSP aprovada**: sem `style=`/`onclick=` inline.
+4. Confirmação (modal) só para remover **contato, regra, padrão ignorado e cookie**; bloquear chat não confirma.
+5. Cor de destaque livre: texto sobre ela escolhido **automaticamente** (claro/escuro) pelo brilho.
+6. Logotipo: **símbolo simples em SVG** + nome.
+
 ## Perguntas em aberto
-1. **Onde persistir layout/aparência?** Padrão adotado: `localStorage` (por navegador). Alternativa: guardar no servidor (sincroniza entre aparelhos; exige tabela/rota nova). *Padrão conservador: localStorage.*
-2. **Busca global/paleta (Ctrl+K)** entra? Padrão: só navegação entre páginas, na fase de polimento; cortável.
-3. **CSP:** aceitar endurecer com CSP (exige remover `style=`/`onclick=` inline)? Padrão: sim.
-4. **Remover (Chats):** hoje "bloquear" limpa o papel — confirmar também? Padrão: confirma só Contato, Regra, Ignorado e Cookie.
-5. **Ajustes por categoria:** os handlers atuais recebem o form inteiro; o plano deve decidir entre um POST por categoria (`/settings/{cat}`) ou manter `/settings` aceitando subconjuntos. Decidir no `/planejar`.
-6. **Cor de destaque livre:** exige contraste mínimo do texto sobre ela (calculado no cliente). Aceitável escolher automaticamente texto claro/escuro?
-7. **Nome/ícone/identidade** do Silicon (logotipo na sidebar): usar só um símbolo simples em SVG? Padrão: sim.
-8. **Alertas/Debug:** os dados atuais (lista em memória) bastam? Sem histórico persistido além do que existe hoje; paginação só se a lista passar de ~100 itens.
-9. Preferência de dashboard: widgets "Alertas recentes" e "Atividade de chats" dependem de dados já expostos por `AppState`; confirmar no plano que não exigem consulta nova cara.
+- POST por categoria (`/settings/{cat}`) vs `/settings` aceitando subconjunto: decidir no plano.
+- Widgets "Alertas recentes" e "Atividade de chats": confirmar no plano que o `AppState` já expõe os dados sem consulta nova cara.
+- Alertas/Debug: sem histórico persistido novo; paginação só se a lista passar de ~100 itens.
