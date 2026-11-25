@@ -1,6 +1,6 @@
 # Spec 010 — Redesign do painel web (rewrite de UI/UX)
 
-Status: **decisões aprovadas pelo dono em 2026-11-25; plano a seguir** · Depende de: 001, 005, 007, 003, 004 (downloader) · Só muda apresentação; **nenhuma regra do bot muda**.
+Status: **APROVADA pelo dono em 2026-11-25; em implementação** · Depende de: 001, 005, 007, 003, 004 (downloader) · Só muda apresentação; **nenhuma regra do bot muda**.
 
 ## Por quê
 O painel (`src/panel.rs`, ~1,7 mil linhas) renderiza HTML com um CSS de uma linha embutido, nav de
