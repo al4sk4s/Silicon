@@ -278,6 +278,25 @@ pub async fn extract_audio(bytes: &[u8], secs: u32) -> Result<Option<Vec<u8>>, C
     }
 }
 
+/// Diagnóstico: (pico, RMS) do áudio extraído, em escala 0..32767. None se não decodificar.
+/// Só para a aba Debug dizer se o som está mudo na origem.
+pub async fn audio_level(ogg: &[u8]) -> Option<(u16, u32)> {
+    let args = ["-i", "pipe:0", "-ac", "1", "-ar", "8000"]
+        .map(String::from)
+        .to_vec();
+    let pcm = run(args, Some(ogg), 10, "s16le").await.ok()?;
+    let s: Vec<i16> = pcm
+        .chunks_exact(2)
+        .map(|b| i16::from_le_bytes([b[0], b[1]]))
+        .collect();
+    if s.is_empty() {
+        return None;
+    }
+    let peak = s.iter().map(|v| v.unsigned_abs()).max()?;
+    let rms = (s.iter().map(|&v| (v as f64).powi(2)).sum::<f64>() / s.len() as f64).sqrt();
+    Some((peak, rms as u32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
