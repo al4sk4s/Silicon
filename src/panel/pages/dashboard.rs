@@ -169,7 +169,7 @@ pub(crate) async fn index(State(st): S) -> Html<String> {
         btn(
             "Restaurar padrão",
             "ghost",
-            "type=\"button\" id=\"dash-reset\" hidden"
+            "type=\"button\" id=\"dash-reset\""
         )
     );
     Html(page(
