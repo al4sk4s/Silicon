@@ -339,10 +339,21 @@ pub async fn handle(ctx: &MessageContext, st: &crate::state::AppState, sent: &cr
     if matches!(src.kind, Kind::Video) && st.store.sticker_sound().unwrap_or(true) {
         let cap = ANIM_SECS.min(st.store.sticker_sound_max_s().unwrap_or(10));
         match convert::extract_audio(&bytes, cap).await {
-            Ok(Some(ogg)) => sound = Sound::New(ogg, cap),
-            Ok(None) => {}
-            Err(_) => audio_failed = true,
+            Ok(Some(ogg)) => {
+                st.dbg(
+                    "figurinha_som",
+                    &format!("áudio extraído {} bytes, {cap} s", ogg.len()),
+                );
+                sound = Sound::New(ogg, cap);
+            }
+            Ok(None) => st.dbg("figurinha_som", "vídeo sem faixa de áudio"),
+            Err(e) => {
+                st.dbg("figurinha_erro_som", &format!("extração falhou: {e:?}"));
+                audio_failed = true;
+            }
         }
+    } else if matches!(src.kind, Kind::Video) {
+        st.dbg("figurinha_som", "desligado nos ajustes");
     }
     drop(bytes); // viewOnce: a mídia original some da memória aqui
     // EXIF (nome/autor) é enfeite: se falhar, vai o WebP sem ele.
@@ -476,7 +487,8 @@ async fn send_webp(
                         .as_option()
                         .cloned()
                 }
-                Err(_) => {
+                Err(e) => {
+                    st.dbg("figurinha_erro_som", &format!("upload do áudio: {e}"));
                     muted = true;
                     None
                 }
