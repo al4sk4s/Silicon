@@ -45,9 +45,10 @@ whatsapp-rust `eeb24da` (pin fixo, sem atualizar).
      com `ensure_compatible` por item, `Fetched`-like).
 - **`send_album`**: 1 item de imagem → `ImageMessage` simples (sem pai). ≥ 2 → pai
   `AlbumMessage{expected_image_count: n_fotos, expected_video_count: 0}` citando o comando, depois cada foto
-  `wrap_as_album_child(img, parent_key)`, atraso 1–2 s entre envios (`pause`, como no resto). Vídeos do carrossel
-  misto saem **depois**, soltos (`expected_video_count` fica 0 para não depender de filho de vídeo no álbum:
-  menor risco). Foto > 16 MB vira `DocumentMessage` (fora do álbum).
+  `wrap_as_album_child(img, parent_key)`, atraso 1–2 s entre envios (`pause`, como no resto). Carrossel misto (decisão do
+  dono, 2026-11-24): vídeos **entram no mesmo álbum**: `expected_video_count = n_vídeos`, cada vídeo
+  recodificado (`ensure_compatible`), enviado como `VideoMessage` e embrulhado com `wrap_as_album_child`; ordem
+  original do post. Vídeo > 64 MB não cabe no álbum: sai solto como documento, depois. Foto > 16 MB vira `DocumentMessage` (fora do álbum).
 - **`src/download/url.rs` / `mod.rs`**: `Platform::Facebook` (`facebook.com`, `fb.watch`, `fb.com`); `name()` →
   `"facebook"`. `cookies.rs`: ramo `Facebook` com domínio `facebook.com` para o `json_to_netscape` (compila;
   UI de cookies não ganha item). `config.rs`/painel: nada.
@@ -56,6 +57,12 @@ whatsapp-rust `eeb24da` (pin fixo, sem atualizar).
 - **`src/help.rs`**: `/baixar` long (fotos, Facebook, ≤ 10 itens) e `NOVIDADES` (+ "Download de fotos e
   álbuns"). Testes de tamanho da bio continuam valendo.
 - Sem tocar: `Cargo.toml`, `state.rs`, `panel.rs`, `config.rs`, sessão.
+
+## Instalação do gallery-dl (feito em 2026-11-24)
+O GitHub do projeto não publica binário nas releases. Empacotei a versão 1.32.21 (wheel do PyPI, Python puro)
+num único executável (`zipapp`, shebang `/usr/bin/env python3`); testado local e no servidor (`--version` ok),
+enviado para `~/gallery-dl` do servidor. Falta só instalar no PATH (precisa de `sudo`):
+`sudo install -m755 ~/gallery-dl /usr/local/bin/gallery-dl`. Atualizar = repetir com a versão nova.
 
 ## Fluxo
 `validate` (host) → limite/min → probe → semáforo → reação → `ytdlp::fetch`

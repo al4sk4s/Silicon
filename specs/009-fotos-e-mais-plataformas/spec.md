@@ -19,7 +19,7 @@ vídeos do Facebook não funcionam. O dono quer que "um post com 5 fotos" chegue
 - **RF3 Álbum:** as fotos saem **juntas**, como álbum do WhatsApp (mensagem pai + filhos associados), uma
   mensagem do bot por item, citando o comando. Teto de **10 itens** por comando (o resto é descartado, com
   1 linha avisando). Atraso 1–2 s entre os envios (P8).
-- **RF4 Mídia mista:** fotos primeiro (álbum), depois cada vídeo. Vídeo > 64 MB vai como documento (como hoje).
+- **RF4 Mídia mista:** fotos e vídeos do carrossel vão **no mesmo álbum**, na ordem do post (decisão do dono, 2026-11-24). Vídeo > 64 MB sai solto como documento.
 - **RF5 Imagens:** envia como veio (JPEG/PNG/WebP); só converte para JPEG se o formato não for aceito.
   Foto > 16 MB vai como documento. Limite de 100 MB total por comando (mesmo teto do vídeo).
 - **RF6 Cookies:** `gallery-dl` usa o mesmo `data/cookies/<plat>.txt` (cópia 0600 no tempdir, apagada ao fim).
