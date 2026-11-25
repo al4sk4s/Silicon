@@ -6,13 +6,13 @@ Spec: `spec.md` · Plano: `plan.md`. Quem: `worker` (sonnet, edita, nunca commit
 Antes de começar: confirmar as decisões 1–3 do topo do `plan.md` (`/comandos`, papel do `/updatedc`, aviso do WhatsApp).
 
 ## Onda 1 — sem build
-- [ ] **T1 [worker] `src/help.rs`:** `Cmd`, `CMDS` (`/s`, `/rename`, `/baixar`, `/help`, `/c`, `/updatedc`), `NOVIDADES`, `parse_cmd`, `parse_updatedc`, `help_text(arg, is_owner)`, `bio_text()`, 5 variações do cabeçalho. Pronto: arquivo + testes escritos (sem rodar cargo). Dep.: nenhuma.
+- [x] **T1 [worker] `src/help.rs`:** `Cmd`, `CMDS` (`/s`, `/rename`, `/baixar`, `/help`, `/c`, `/updatedc`), `NOVIDADES`, `parse_cmd`, `parse_updatedc`, `help_text(arg, is_owner)`, `bio_text()`, 5 variações do cabeçalho. Pronto: arquivo + testes escritos (sem rodar cargo). Dep.: nenhuma.
 
 ## Onda 2 — build serializado
-- [ ] **T2 [eu] Build do T1** + `mod help;` em `main.rs`; corrigir. Pronto: `fmt`, `clippy -j1`, `test -j1` verdes. Dep.: T1.
-- [ ] **T3 [eu] `wa.rs`: ramos `/help` e `/updatedc`,** colisão `/comandos` (sem args → ajuda; `allow|deny|status` → `/c`), atraso P8, Debug (`ajuda_enviada`). Teste: `/comandos allow` segue `Allow`. Dep.: T2.
-- [ ] **T4 [eu] `handle_updatedc`:** `fetch_metadata`, comparar, `set_description` com `PreviousDescription::from(id)`, 1 retry no conflito, erros com 5 variações cada, Debug (`bio_*`). Função pura de classificação de erro com teste. Dep.: T2.
-- [ ] **T5 [eu] Build e revisão final** (`-j1`): P1 (só responde ao dono), P3, P8 (1 mensagem, sem laço), sem JID/texto no log. Dep.: T3, T4.
+- [x] **T2 [eu] Build do T1** + `mod help;` em `main.rs`; corrigir. Pronto: `fmt`, `clippy -j1`, `test -j1` verdes. Dep.: T1.
+- [x] **T3 [eu] `wa.rs`: ramos `/help` e `/updatedc`,** colisão `/comandos` (sem args → ajuda; `allow|deny|status` → `/c`), atraso P8, Debug (`ajuda_enviada`). Teste: `/comandos allow` segue `Allow`. Dep.: T2.
+- [x] **T4 [eu] `handle_updatedc`:** `fetch_metadata`, comparar, `set_description` com `PreviousDescription::from(id)`, 1 retry no conflito, erros com 5 variações cada, Debug (`bio_*`). Função pura de classificação de erro com teste. Dep.: T2.
+- [x] **T5 [eu] Build e revisão final** (`-j1`): P1 (só responde ao dono), P3, P8 (1 mensagem, sem laço), sem JID/texto no log. Dep.: T3, T4.
 
 ## Validação real
 - **T6 [WA] Ajuda:** `/help`, `/comandos`, `/help baixar`, `/help dl`, `/help xyz`; membro comum não vê `/c` nem `/updatedc`. Dep.: T5.

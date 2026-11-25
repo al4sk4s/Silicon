@@ -4,6 +4,7 @@ mod config;
 mod detector;
 mod dispatch;
 mod download;
+mod help;
 mod lock;
 mod metrics;
 mod monitor;

@@ -1,6 +1,6 @@
 # Plano 008 — Ajuda (`/help`) e bio do grupo (`/updatedc`) (o COMO)
 
-Status: rascunho · Spec: `specs/008-ajuda-e-bio/spec.md` · Constituição v1.1.0 · whatsapp-rust `eeb24da` (pin fixo, sem atualizar).
+Status: implementado, falta validar com WhatsApp real (T6-T7) · Spec: `specs/008-ajuda-e-bio/spec.md` · Constituição v1.1.0 · whatsapp-rust `eeb24da` (pin fixo, sem atualizar).
 
 ## Decisões a confirmar
 1. **`/comandos` vira ajuda para todos** e `/comandos allow|deny|status` segue valendo para o dono. Hoje

@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use whatsapp_rust::pair_code::PairCodeOptions;
 use whatsapp_rust::prelude::*;
+use whatsapp_rust::{GroupDescription, GroupError, PreviousDescription};
 
 /// IDs de mensagens enviadas por nós (anti-loop: o dono comanda do mesmo número).
 /// shortcut: zera ao passar de 500 IDs; basta para o ritmo de um grupo de amigos.
@@ -83,10 +84,13 @@ fn parse_chat_cmd(text: &str) -> Option<ChatCmd> {
     if cmd != "/c" && cmd != "/comandos" {
         return None;
     }
-    Some(match w.next().map(str::to_lowercase).as_deref() {
+    let sub = w.next().map(str::to_lowercase);
+    Some(match sub.as_deref() {
         Some("allow") => ChatCmd::Allow,
         Some("deny") => ChatCmd::Deny,
         Some("status") => ChatCmd::Status,
+        // `/comandos` sem subcomando é a ajuda (spec 008); só `/c` mostra o uso do admin.
+        _ if cmd == "/comandos" => return None,
         _ => ChatCmd::Usage,
     })
 }
@@ -143,6 +147,143 @@ async fn handle_chat_cmd(
     match res {
         Ok(r) => sent.add(r.message_id.as_str()),
         Err(_) => st.push_event("erro_envio", chat),
+    }
+}
+
+/// Atraso configurado antes de responder (P8).
+async fn pause(st: &AppState) {
+    let min = st.store.delay_min_ms().unwrap_or(1000);
+    let max = st.store.delay_max_ms().unwrap_or(2000);
+    tokio::time::sleep(pick_delay(min, max)).await;
+}
+
+async fn say(ctx: &MessageContext, sent: &Sent, t: &str) {
+    if let Ok(r) = ctx.reply_quoting(t).await {
+        sent.add(r.message_id.as_str());
+    }
+}
+
+const BIO_NAO_DONO: &[&str] = &[
+    "Esse comando é só do dono.",
+    "Só o dono pode usar esse.",
+    "Isso aqui é coisa do dono, desculpa.",
+    "Esse eu só atendo se vier do dono.",
+    "Comando restrito ao dono.",
+];
+const BIO_NAO_GRUPO: &[&str] = &[
+    "Esse comando só funciona dentro de um grupo.",
+    "Preciso estar num grupo pra isso.",
+    "Aqui não é grupo, tenta lá.",
+    "Só rola em grupo, esse comando.",
+    "Manda isso dentro do grupo que eu atualizo.",
+];
+const BIO_SEM_PERM: &[&str] = &[
+    "Não tenho permissão pra editar a descrição desse grupo.",
+    "O grupo não me deixa mudar a descrição.",
+    "Sem permissão pra mexer na descrição aqui.",
+    "Não consegui: só admins podem editar a descrição e eu não sou.",
+    "Descrição travada pra mim nesse grupo.",
+];
+const BIO_ERRO: &[&str] = &[
+    "Não consegui atualizar a descrição agora.",
+    "Deu erro ao mudar a descrição, tenta de novo daqui a pouco.",
+    "Falhou na hora de gravar a descrição.",
+    "A descrição não quis mudar, tenta mais tarde.",
+    "Travei ao atualizar a descrição, repete depois.",
+];
+
+#[derive(Debug, PartialEq)]
+enum BioErr {
+    Conflito,
+    SemPerm,
+    Servidor,
+}
+
+fn classify_bio_err(e: &GroupError) -> BioErr {
+    if matches!(e, GroupError::DescriptionConflict) {
+        return BioErr::Conflito;
+    }
+    let s = e.to_string().to_lowercase();
+    if ["403", "not-authorized", "forbidden"]
+        .iter()
+        .any(|k| s.contains(k))
+    {
+        BioErr::SemPerm
+    } else {
+        BioErr::Servidor
+    }
+}
+
+/// `/updatedc`: só o dono, só em grupo. Grava a bio gerada por `help::bio_text` (spec 008).
+async fn handle_updatedc(ctx: &MessageContext, st: &AppState, sent: &Sent, owner: bool) {
+    if !owner {
+        st.dbg("bio_recusa", "nao dono");
+        return say(ctx, sent, variante(BIO_NAO_DONO)).await;
+    }
+    let jid = ctx.info.source.chat.clone();
+    if !jid.to_string().ends_with("@g.us") {
+        st.dbg("bio_recusa", "nao e grupo");
+        return say(ctx, sent, variante(BIO_NAO_GRUPO)).await;
+    }
+    let bio = crate::help::bio_text();
+    let Ok(desc) = GroupDescription::new(bio.clone()) else {
+        st.dbg("bio_erro_servidor", "texto invalido");
+        return say(ctx, sent, variante(BIO_ERRO)).await;
+    };
+    let groups = ctx.client.groups();
+    let mut conflito = false;
+    for _ in 0..2 {
+        let meta = match groups.fetch_metadata(&jid).await {
+            Ok(m) => m,
+            Err(e) => {
+                st.dbg(
+                    "bio_erro_servidor",
+                    &format!("leitura: {}", classify_name(&e)),
+                );
+                return say(ctx, sent, variante(BIO_ERRO)).await;
+            }
+        };
+        if meta.description.as_deref() == Some(bio.as_str()) {
+            st.dbg("bio_atualizada", "ja estava igual");
+            return react_ok(ctx, sent).await;
+        }
+        let prev = PreviousDescription::from(meta.description_id.as_deref());
+        match groups
+            .set_description(jid.clone(), Some(desc.clone()), prev)
+            .await
+        {
+            Ok(()) => {
+                st.dbg(
+                    "bio_atualizada",
+                    &format!("{} caracteres", bio.chars().count()),
+                );
+                return react_ok(ctx, sent).await;
+            }
+            Err(e) => match classify_bio_err(&e) {
+                BioErr::Conflito if !conflito => {
+                    conflito = true;
+                    st.dbg("bio_erro_conflito", "relendo");
+                }
+                BioErr::SemPerm => {
+                    st.dbg("bio_erro_permissao", "sem permissao");
+                    return say(ctx, sent, variante(BIO_SEM_PERM)).await;
+                }
+                k => {
+                    st.dbg("bio_erro_servidor", &format!("{k:?}"));
+                    return say(ctx, sent, variante(BIO_ERRO)).await;
+                }
+            },
+        }
+    }
+}
+
+fn classify_name(e: &GroupError) -> String {
+    format!("{:?}", classify_bio_err(e))
+}
+
+async fn react_ok(ctx: &MessageContext, sent: &Sent) {
+    if let Ok(r) = ctx.react("✅").await {
+        sent.add(r.message_id.as_str());
     }
 }
 
@@ -224,6 +365,21 @@ async fn on_message(st: Arc<AppState>, sent: Arc<Sent>, ctx: MessageContext) {
         let max = st.store.delay_max_ms().unwrap_or(2000);
         tokio::time::sleep(pick_delay(min, max)).await;
         crate::download::handle::handle(&ctx, &st, &sent, arg).await;
+        return;
+    }
+    if let Some(arg) = crate::help::parse_cmd(text) {
+        pause(&st).await;
+        let txt = crate::help::help_text(arg, admin);
+        say(&ctx, &sent, &txt).await;
+        st.dbg(
+            "ajuda_enviada",
+            if arg.is_empty() { "resumo" } else { "detalhe" },
+        );
+        return;
+    }
+    if crate::help::parse_updatedc(text) {
+        pause(&st).await;
+        handle_updatedc(&ctx, &st, &sent, admin).await;
         return;
     }
     if let Some(args) = crate::stickers::parse_rename(text) {
@@ -405,8 +561,37 @@ async fn build(
 #[cfg(test)]
 mod tests {
     #[test]
+    fn comandos_e_ajuda_ou_c() {
+        assert_eq!(parse_chat_cmd("/comandos allow"), Some(ChatCmd::Allow));
+        assert_eq!(parse_chat_cmd("/comandos status"), Some(ChatCmd::Status));
+        assert_eq!(parse_chat_cmd("/comandos"), None);
+        assert_eq!(parse_chat_cmd("/c"), Some(ChatCmd::Usage));
+    }
+
+    #[test]
+    fn classifica_erro_da_bio() {
+        assert_eq!(
+            classify_bio_err(&GroupError::DescriptionConflict),
+            BioErr::Conflito
+        );
+        let perm = GroupError::InvalidRequest("403 forbidden".into());
+        assert_eq!(classify_bio_err(&perm), BioErr::SemPerm);
+        let outro = GroupError::InvalidRequest("timeout".into());
+        assert_eq!(classify_bio_err(&outro), BioErr::Servidor);
+    }
+
+    #[test]
     fn mensagens_do_c_tem_5_variantes() {
-        for g in [SALVAR, OUTRO_PAPEL, STATUS, USO_C] {
+        for g in [
+            BIO_NAO_DONO,
+            BIO_NAO_GRUPO,
+            BIO_SEM_PERM,
+            BIO_ERRO,
+            SALVAR,
+            OUTRO_PAPEL,
+            STATUS,
+            USO_C,
+        ] {
             assert!(g.len() >= 5);
         }
         assert!(STATUS.iter().all(|t| t.contains("{}")));
