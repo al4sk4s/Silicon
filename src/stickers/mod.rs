@@ -230,7 +230,7 @@ pub async fn make(kind: Kind, bytes: &[u8], malvin: bool) -> Result<Vec<u8>, &'s
         Kind::Video => convert::to_animated(bytes, malvin)
             .await
             .map(|(b, fps, q)| {
-                tracing::info!(fps, q, "figurinha animada"); // RFA3: sem conteúdo
+                tracing::info!(fps, q, bytes = b.len(), "figurinha animada"); // RFA3: sem conteúdo
                 b
             }),
     };
@@ -507,6 +507,14 @@ async fn send_webp(
         }
     };
     let animated = whatsapp_rust::webp::is_animated(&webp);
+    st.dbg(
+        "figurinha_peso",
+        &format!(
+            "{} ({} bytes)",
+            if animated { "animada" } else { "estática" },
+            webp.len()
+        ),
+    );
     let t_up = std::time::Instant::now();
     let up = match ctx
         .client

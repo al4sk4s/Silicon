@@ -155,13 +155,13 @@ async fn attempt(
         "-t".into(),
         "10".into(),
         "-vf".into(),
-        format!("fps={fps},{filter}"),
+        format!("fps={fps},mpdecimate,{filter}"),
         "-c:v".into(),
         "libwebp".into(),
         "-lossless".into(),
         "0".into(),
         "-compression_level".into(),
-        "4".into(),
+        "5".into(), // medido: ~5% menor que 4, ~7% mais lento
         "-q:v".into(),
         q.to_string(),
         "-loop".into(),
@@ -181,16 +181,12 @@ async fn attempt(
 /// Roda os degraus `idxs` ao mesmo tempo (o encoder WebP usa ~1 núcleo por processo).
 async fn round(
     path: &str,
-    ladder: &'static [(u8, u8)],
     filter: &'static str,
-    idxs: &[usize],
+    combos: &[(u8, u8)],
 ) -> Result<Vec<Option<Vec<u8>>>, ConvErr> {
-    let tasks: Vec<_> = idxs
+    let tasks: Vec<_> = combos
         .iter()
-        .map(|&i| {
-            let (fps, q) = ladder[i];
-            tokio::spawn(attempt(path.to_string(), fps, q, filter))
-        })
+        .map(|&(fps, q)| tokio::spawn(attempt(path.to_string(), fps, q, filter)))
         .collect();
     let mut out = Vec::new();
     for t in tasks {
@@ -216,7 +212,7 @@ pub async fn to_animated(bytes: &[u8], malvin: bool) -> Result<(Vec<u8>, u8, u8)
     let path = mem.path();
     let n = ladder.len();
     let probes = [0, (n - 1) / 2, n - 1];
-    let mut res = round(&path, ladder, filter, &probes).await?;
+    let mut res = round(&path, filter, &probes.map(|i| ladder[i])).await?;
     let k = res
         .iter()
         .position(Option::is_some)
@@ -224,7 +220,8 @@ pub async fn to_animated(bytes: &[u8], malvin: bool) -> Result<(Vec<u8>, u8, u8)
     let mut pick = (probes[k], res[k].take().ok_or(ConvErr::TooBig)?);
     if k > 0 {
         let between: Vec<usize> = (probes[k - 1] + 1..probes[k]).collect();
-        let found = round(&path, ladder, filter, &between).await?;
+        let combos: Vec<_> = between.iter().map(|&i| ladder[i]).collect();
+        let found = round(&path, filter, &combos).await?;
         if let Some((j, out)) = found
             .into_iter()
             .enumerate()
@@ -233,9 +230,35 @@ pub async fn to_animated(bytes: &[u8], malvin: bool) -> Result<(Vec<u8>, u8, u8)
             pick = (between[j], out);
         }
     }
+    let (fps, mut q) = ladder[pick.0];
+    let mut best = pick.1;
+    // Refino: com o fps decidido, sobe o q até o teto de 500 KB (a escada tem degraus largos).
+    // Se o degrau de cima é do mesmo fps, o limite é o q dele (já sabemos que não coube).
+    if pick.0 > 0 {
+        let hi = match ladder[pick.0 - 1] {
+            (f, hq) if f == fps => hq,
+            _ => (q + 30).min(100),
+        };
+        let gap = hi.saturating_sub(q);
+        if gap >= 4 {
+            let cands: Vec<(u8, u8)> = [gap / 4, gap / 2, gap * 3 / 4]
+                .iter()
+                .map(|d| (fps, q + d))
+                .collect();
+            let tries = round(&path, filter, &cands).await?;
+            if let Some((c, out)) = cands
+                .iter()
+                .zip(tries)
+                .rev()
+                .find_map(|(c, o)| o.map(|o| (*c, o)))
+            {
+                q = c.1;
+                best = out;
+            }
+        }
+    }
     drop(mem);
-    let (fps, q) = ladder[pick.0];
-    Ok((pick.1, fps, q))
+    Ok((best, fps, q))
 }
 
 /// Primeira trilha de áudio -> Ogg/Opus mono, até `secs` s. Sem áudio -> `Ok(None)`.
