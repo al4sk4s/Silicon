@@ -8,26 +8,23 @@
 Figurinhas na hora, alerta de promoção "bugada" e um painel simples para mandar em tudo.
 
 ![Rust](https://img.shields.io/badge/Rust-1.95%2B-orange?logo=rust&logoColor=white)
-![Status](https://img.shields.io/badge/status-planejamento-blue)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-1.0.0-blue)
 ![Uso](https://img.shields.io/badge/uso-pessoal-lightgrey)
 
 </div>
 
 ---
 
-> **Em que pé estamos:** o **núcleo (spec 001)** já está implementado e validado no
-> WhatsApp real (login, painel, papéis, reconexão). Os **comandos de figurinha (002)** e o
-> **alerta de bug (003)** ainda são só especificação: este README descreve o que vamos
-> construir, não o que já funciona.
-
-## ✨ O que o Silicon vai fazer
+## ✨ O que o Silicon faz
 
 | | |
 |---|---|
-| 🖼️ **Figurinhas** | Responda uma imagem, vídeo ou GIF com `/s`, `/fig` ou `/figurinha` e receba a figurinha (estática ou animada). Também funciona com mídia de visualização única, **sem guardar nada**. |
-| 🔔 **Alerta de bug** | Fica de olho no grupo de promoções e avisa você, num grupo privado, quando alguém mandar um "bug" (preço errado, promoção que vai sumir...). |
-| 🎛️ **Painel local** | Uma página protegida por senha, só na sua rede, para escolher quais chats usam o bot e editar as regras de detecção. |
-| 🔒 **Sessão que fica** | Você lê o QR Code **uma vez**; a sessão fica salva e o bot reconecta sozinho. |
+| 🖼️ **Figurinhas** | Responda uma imagem, vídeo, GIF ou figurinha com `/s` (`/fig`, `/figurinha`): estática ou animada (até 10 s, com som quando tem). `/rename nome / autor` troca os metadados. Mídia de visualização única é processada **só em memória** (função desligada por padrão). |
+| 📥 **Downloader** | `/baixar <link>` (`/dl`) baixa vídeos e fotos/carrosséis de TikTok, Instagram e Facebook via `yt-dlp`; acima de 64 MB vai como arquivo. |
+| 🔔 **Alerta de bug** | Observa o grupo de promoções e avisa o dono, num grupo privado, quando alguém manda um "bug" (preço errado, promoção que vai sumir). |
+| 🙋 **Ajuda** | `/help` e `/help <comando>`; `/updatedc` (dono) atualiza a descrição do grupo com a lista de comandos. |
+| 🎛️ **Painel local** | Página com senha, só na sua rede: dashboard, papéis dos chats, regras de detecção, contatos, pareamento por QR/código, ajustes por categoria e aparência (tema, cor, densidade). |
+| 🔒 **Sessão que fica** | O QR é lido **uma vez**; a sessão fica salva e o bot reconecta sozinho. |
 
 ## 🧭 Como ele se comporta
 
@@ -36,57 +33,55 @@ O bot segue regras que valem para o projeto inteiro (veja a
 
 - **Só responde, nunca inicia.** A única exceção é o alerta que ele manda para o *seu* grupo.
 - **Chat sem papel é ignorado**, antes de ler ou baixar qualquer coisa. Sem configuração, o bot fica mudo.
-- **Só o dono administra** (`/permitir`, `/bloquear` e o painel).
+- **Só o dono administra** (`/c allow`, `/c deny`, `/c status` e o painel).
 - **Mídia de visualização única nunca vai para o disco**: é processada em memória e descartada.
 - **Parece gente, não robô:** atraso de 1 a 2 segundos, limite de uso por chat e nada de rajada.
 - **Sem ligações.** Nunca.
 
-## 🧩 Peças do projeto
+## 🧩 Specs
 
-```
-Silicon
-├── 001 · Núcleo ............ sessão (QR), papéis por chat, painel com senha, daemon
-├── 002 · Figurinhas ........ /s, /fig, /figurinha: estática, animada e visualização única
-└── 003 · Monitor ........... detecta "bug" no grupo de promoções e alerta o dono
-```
-
-| Spec | Documentos |
+| Spec | O que é |
 |---|---|
-| Núcleo | [spec](specs/001-nucleo/spec.md) · [plano](specs/001-nucleo/plan.md) · [tarefas](specs/001-nucleo/tasks.md) |
-| Figurinhas | [spec](specs/002-figurinhas/spec.md) · [plano](specs/002-figurinhas/plan.md) · [tarefas](specs/002-figurinhas/tasks.md) |
-| Monitor de promoções | [spec](specs/003-monitor-promocoes/spec.md) · [plano](specs/003-monitor-promocoes/plan.md) · [tarefas](specs/003-monitor-promocoes/tasks.md) |
+| [001 Núcleo](specs/001-nucleo/spec.md) | sessão (QR), papéis por chat, painel com senha, daemon |
+| [002 Figurinhas](specs/002-figurinhas/spec.md) · [004 animadas](specs/004-figurinhas-animadas/spec.md) · [005 som](specs/005-figurinhas-som/spec.md) | `/s`, `/rename` |
+| [003 Monitor](specs/003-monitor-promocoes/spec.md) | alerta de "bug" |
+| [004 Comandos do dono](specs/004-comandos-do-dono/spec.md) · [007 Contatos](specs/007-contatos/spec.md) | `/c allow|deny|status`, contatos |
+| [004 Downloader](specs/004-downloader/spec.md) · [009 Fotos e plataformas](specs/009-fotos-e-mais-plataformas/spec.md) | `/baixar` |
+| [005 Pareamento](specs/005-painel-pareamento/spec.md) · [010 Redesign](specs/010-redesign-painel/spec.md) | painel |
+| [006 Release](specs/006-release/spec.md) · [008 Ajuda e bio](specs/008-ajuda-e-bio/spec.md) | binários, `/help`, `/updatedc` |
 
-## 🛠️ Stack prevista
+## 🛠️ Stack
 
 - **Rust** (async com `tokio`) em cima da [`whatsapp-rust`](https://github.com/oxidezap/whatsapp-rust), fixada em um commit específico
 - **SQLite** para sessão e configuração (arquivos separados)
 - **axum** para o painel, com senha `argon2` e HTTPS autoassinado quando sair do loopback
-- **ffmpeg** (com o encoder `libwebp_anim`; o bot checa no boot) para converter as figurinhas. Mídia de visualização única (desligada por padrão; ligue no painel e avise o grupo) é convertida só em memória
+- **ffmpeg** (com o encoder `libwebp_anim`; o bot checa no boot) para as figurinhas
+- **yt-dlp** para o `/baixar` (opcional; o bot re-sonda a cada comando)
 - **systemd** para rodar 24/7 no servidor
 
-## 🚀 Como vai ser usar
+## 📦 Instalação
 
-> Isto é o plano; ainda não dá para rodar.
+Baixe da [página de Releases](../../releases/latest) (Linux x86_64):
+
+| Arquivo | Uso |
+|---|---|
+| `silicon-linux-x86_64` | binário simples, sem extensão (`chmod +x`) |
+| `silicon-x86_64.AppImage` | o mesmo, empacotado (precisa de FUSE ou `--appimage-extract-and-run`) |
+| `SHA256SUMS` | conferência: `sha256sum -c SHA256SUMS` |
+
+> **Windows:** sem `.exe` por enquanto. O código usa recursos só de Linux (`memfd_create`,
+> `/proc`, `localtime_r`). Para compilar: `cargo build --release` (Rust 1.95+).
+
+## 🚀 Como usar
 
 ```bash
-# 1. defina a senha do painel
 silicon set-password   # ou pule: o 1º acesso ao painel (loopback) pede a senha na tela
-
-# 2. suba o bot e leia o QR Code uma única vez
-silicon
-
-# 3. abra o painel na sua rede e escolha os chats
-#    https://<ip-do-servidor>:8787
+silicon                # sobe o bot; leia o QR uma única vez (ou pareie pelo painel em /pair)
+# painel na sua rede: https://<ip-do-servidor>:8787
 ```
 
-No WhatsApp, no chat que você liberou:
-
-```text
-/s            (respondendo a uma imagem, vídeo ou GIF)
-/figurinha    (o mesmo, com o nome por extenso)
-/permitir     (só você: libera o chat atual)
-/bloquear     (só você: tira a permissão)
-```
+No WhatsApp, num chat liberado: `/s`, `/rename`, `/baixar <link>`, `/help`. Só o dono:
+`/c allow`, `/c deny`, `/c status`, `/updatedc`.
 
 ## 🖥️ Deploy (systemd)
 
@@ -112,7 +107,7 @@ sudo systemctl enable --now silicon
 
 - **Binário pronto:** ao empurrar uma tag `vX.Y.Z`, o GitHub Actions publica no Release o
   `silicon-linux-x86_64`, o `silicon-x86_64.AppImage` e o `SHA256SUMS` (spec 006). Use no lugar
-  de `target/release/silicon` no passo 2. Windows `.exe` não é suportado (código Unix). O `ffmpeg` continua sendo dependência do sistema.
+  de `target/release/silicon` no passo 2. O `ffmpeg` continua sendo dependência do sistema.
 - **Pareamento pelo painel (spec 005):** em `/pair` o QR aparece em tempo real, com o código de
   pareamento, campo de número (`5511999998888`) e "Tentar de novo". Só a LAN, com senha (P5).
 - **Comandos do dono (spec 004):** `/s` funciona em qualquer chat para você; `/c allow`, `/c deny`
